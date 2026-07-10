@@ -13,7 +13,9 @@
 
 (defn- sub3 [a b] (mapv - a b))
 (defn- cross [[ax ay az] [bx by bz]] [(- (* ay bz) (* az by)) (- (* az bx) (* ax bz)) (- (* ax by) (* ay bx))])
-(defn- norm [v] (let [l (max 1.0e-8 (js/Math.hypot (v 0) (v 1) (v 2)))] (mapv #(/ % l) v)))
+(defn- norm [v]
+  (let [l (max 1.0e-8 (js/Math.hypot (nth v 0) (nth v 1) (nth v 2)))]
+    (mapv #(/ % l) v)))
 (defn- render-geometry [{:mesh/keys [vertices faces]}]
   (let [triangles (mapcat (fn [f] (map (fn [i] [(first f) (nth f i) (nth f (inc i))]) (range 1 (dec (count f))))) faces)
         positions (vec (mapcat (fn [tri] (map #(nth vertices %) tri)) triangles))
@@ -52,23 +54,24 @@
 (defn- redo! [] (when-let [m (peek (:future @state))] (swap! state (fn [s] (assoc s :mesh m :history (conj (:history s) m) :future (pop (:future s))))) (refresh-mesh!) (update-ui!)))
 
 (defn- draw! []
-  (when-let [{:keys [device ctx depth mctx buffers w h]} @runtime]
+  (when-let [{:keys [^js device ^js ctx ^js depth mctx buffers w h]} @runtime]
     (let [{:keys [azimuth elevation]} @state d 6.0 eye [(* d (js/Math.cos elevation) (js/Math.cos azimuth)) (* d (js/Math.sin elevation)) (* d (js/Math.cos elevation) (js/Math.sin azimuth))]
           vp (gpu-mesh/view-projection eye [0 0 0] (/ w h)) enc (.createCommandEncoder device)
           pass (.beginRenderPass enc #js {:colorAttachments #js [#js {:view (.createView (.getCurrentTexture ctx)) :loadOp "clear" :storeOp "store" :clearValue #js {:r 0.035 :g 0.055 :b 0.10 :a 1}}] :depthStencilAttachment #js {:view (.createView depth) :depthLoadOp "clear" :depthStoreOp "store" :depthClearValue 1}})]
       (gpu-mesh/draw! mctx pass buffers vp [0.35 0.58 1.0] [] []) (.end pass) (.submit (.-queue device) #js [(.finish enc)])))
   (js/requestAnimationFrame draw!))
 
-(defn- init-gpu! [canvas]
-  (-> (.requestAdapter (.-gpu js/navigator)) (.then #(.requestDevice %))
-      (.then (fn [device] (let [fmt (.getPreferredCanvasFormat (.-gpu js/navigator)) w (.-clientWidth canvas) h (.-clientHeight canvas) ctx (.getContext canvas "webgpu")
+(defn- init-gpu! [^js canvas]
+  (let [^js gpu (.-gpu js/navigator)]
+    (-> (.requestAdapter gpu) (.then (fn [^js adapter] (.requestDevice adapter)))
+      (.then (fn [^js device] (let [fmt (.getPreferredCanvasFormat gpu) w (.-clientWidth canvas) h (.-clientHeight canvas) ^js ctx (.getContext canvas "webgpu")
                                 _ (set! (.-width canvas) w) _ (set! (.-height canvas) h) _ (.configure ctx #js {:device device :format fmt :alphaMode "opaque"})
-                                depth (.createTexture device #js {:size #js [w h] :format "depth24plus" :usage (.-RENDER_ATTACHMENT js/GPUTextureUsage)}) mctx (gpu-mesh/init! device fmt)]
+                                ^js depth (.createTexture device #js {:size #js [w h] :format "depth24plus" :usage (.-RENDER_ATTACHMENT js/GPUTextureUsage)}) mctx (gpu-mesh/init! device fmt)]
                             (reset! runtime {:device device :ctx ctx :depth depth :mctx mctx :w w :h h}) (refresh-mesh!)
                             (set! (.-textContent (.getElementById js/document "gpu-status")) "")
                             (set! (.-__kami_modeler_ready js/window) true)
                             (draw!))))
-      (.catch (fn [e] (set! (.-textContent (.getElementById js/document "gpu-status")) (str "WebGPU unavailable: " e))))))
+      (.catch (fn [e] (set! (.-textContent (.getElementById js/document "gpu-status")) (str "WebGPU unavailable: " e)))))))
 
 (defn ^:export init! []
   (let [canvas (.getElementById js/document "gpu-canvas") drag (atom nil)]

@@ -31,6 +31,7 @@
   (html/html5
    [:html {:lang "en"}
     [:head [:meta {:charset "utf-8"}] [:meta {:name "viewport" :content "width=device-width,initial-scale=1"}]
+     [:link {:rel "icon" :href "data:,"}]
      [:title "Kami Modeler"] [:style (css/css sheet)]]
     [:body [:header [:strong "KAMI MODELER"] [:a {:href "https://kotoba-lang.github.io/kami-studio/"} "Studio"] [:span "WGPU polygon workspace"] [:button {:id "export"} "Export EDN"]]
      [:main [:aside [:h2 "Scene"] [:button.object.selected "◆ Cube"] [:h2 "Tools"] [:button {:data-command "select"} "Select"] [:button {:data-command "extrude"} "Extrude"] [:button {:data-command "orbit"} "Orbit"] [:h2 "Interaction profile"] [:select {:id "profile"} [:option {:value "blender"} "Blender"] [:option {:value "maya"} "Maya"] [:option {:value "max"} "3ds Max"] [:option {:value "c4d"} "Cinema 4D"]] [:p.hint {:id "shortcutHint"} "E Extrude · MMB Orbit · Ctrl+Z Undo"]]

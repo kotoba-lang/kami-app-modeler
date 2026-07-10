@@ -8,4 +8,5 @@
     (is (re-find #"KAMI MODELER" page))
     (is (re-find #"id=\"extrude\"" page))
     (is (re-find #"\.viewport" page))
-    (is (re-find #"src=\"./app.js\"" page))))
+    (is (re-find #"rel=\"icon\" href=\"data:,\"" page))
+    (is (re-find #"src=\"./js/app.js\"" page))))
