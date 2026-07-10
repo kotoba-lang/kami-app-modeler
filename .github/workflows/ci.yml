@@ -1,0 +1,18 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  webgpu-e2e:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm}
+      - run: npm ci
+      - run: npx playwright install chromium
+      - run: npm run verify:webgpu
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: modeler-webgpu
+          path: test/modeler-webgpu.png
+          if-no-files-found: ignore

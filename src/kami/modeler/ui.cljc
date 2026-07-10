@@ -19,21 +19,21 @@
              "button:hover,.selected" {:border-color "#7d9cff" :background "#293a70"}
              ".primary" {:background "#6f8fff" :color "#071127" :border 0 :font-weight 700}
              ".viewport" {:position :relative :overflow :hidden :background "radial-gradient(circle at 50% 42%,#1e315a,#0a0f1e 62%)"}
-             ".grid" {:position :absolute :inset "45% -30% -45%" :background "linear-gradient(#35507b 1px,transparent 1px),linear-gradient(90deg,#35507b 1px,transparent 1px)" :background-size "34px 34px" :transform "perspective(380px) rotateX(62deg)" :opacity ".6"}
-             "#cube" {:position :absolute :left "50%" :top "42%" :width 150 :height 150 :transform "translate(-50%,-50%) skewY(-30deg) scaleY(.86)" :background "#6292ff" :box-shadow "inset -18px -16px #3655a8,0 26px 48px #0008" :transition "height .2s"}
+             "#gpu-canvas" {:width "100%" :height "100%" :display :block}
+             ".gpu-fallback" {:position :absolute :inset "45% auto auto 50%" :transform "translate(-50%,-50%)" :color "#ffb9b9"}
              ".axis,.status" {:position :absolute :font-family :ui-monospace :font-size 12 :color "#b8caff"}
              ".axis" {:bottom 24 :left 26 :color "#ffadb7"}
              ".status" {:right 18 :bottom 16 :display :flex :gap 14 :background "#0b1020bb" :padding 8 :border-radius 6}
              "label" {:display :grid :gap 8 :color "#bfcbe8"}
-             "input" {:accent-color "#8aa8ff"}}})
+             "input,select" {:accent-color "#8aa8ff" :background "#171f3b" :color "#e8ecf8" :border "1px solid #35446e" :padding 8}}})
 
 (defn page []
   (html/html5
    [:html {:lang "en"}
     [:head [:meta {:charset "utf-8"}] [:meta {:name "viewport" :content "width=device-width,initial-scale=1"}]
      [:title "Kami Modeler"] [:style (css/css sheet)]]
-    [:body [:header [:strong "KAMI MODELER"] [:a {:href "https://kotoba-lang.github.io/kami-studio/"} "Studio"] [:span "Polygon authoring preview"] [:button {:id "export"} "Export project"]]
-     [:main [:aside [:h2 "Scene"] [:button.object.selected "◆ Cube"] [:h2 "Tools"] [:button {:data-tool "select"} "Select"] [:button {:data-tool "extrude"} "Extrude"] [:button {:data-tool "move"} "Move"] [:p.hint "Choose Extrude, then use the control on the right."]]
-      [:section.viewport [:div.grid] [:div {:id "cube" :aria-label "Selected cube"}] [:div.axis "Y\n│\n└── X"] [:div.status [:span {:id "tool"} "Select"] [:span {:id "faces"} "6 faces"]]]
-      [:aside [:h2 "Inspector"] [:label "Extrude distance " [:output {:id "distanceValue"} "0.50"] [:input {:id "distance" :type "range" :min "0.1" :max "2" :step "0.1" :value "0.5"}]] [:button.primary {:id "extrude"} "Extrude selected face"] [:h2 "History"] [:ol {:id "history"} [:li "Create cube"]] [:button {:id "undo"} "Undo"]]]
-     [:script {:type "module" :src "./app.js"}]]]))
+    [:body [:header [:strong "KAMI MODELER"] [:a {:href "https://kotoba-lang.github.io/kami-studio/"} "Studio"] [:span "WGPU polygon workspace"] [:button {:id "export"} "Export EDN"]]
+     [:main [:aside [:h2 "Scene"] [:button.object.selected "◆ Cube"] [:h2 "Tools"] [:button {:data-command "select"} "Select"] [:button {:data-command "extrude"} "Extrude"] [:button {:data-command "orbit"} "Orbit"] [:h2 "Interaction profile"] [:select {:id "profile"} [:option {:value "blender"} "Blender"] [:option {:value "maya"} "Maya"] [:option {:value "max"} "3ds Max"] [:option {:value "c4d"} "Cinema 4D"]] [:p.hint {:id "shortcutHint"} "E Extrude · MMB Orbit · Ctrl+Z Undo"]]
+      [:section.viewport [:canvas {:id "gpu-canvas" :aria-label "WebGPU mesh viewport"}] [:div.gpu-fallback {:id "gpu-status"} "Initializing WebGPU…"] [:div.axis "Y\n│\n└── X"] [:div.status [:span {:id "tool"} "Select Face"] [:span {:id "meshStats"} "8 vertices · 6 faces"]]]
+      [:aside [:h2 "Face Inspector"] [:label "Extrude distance " [:output {:id "distanceValue"} "0.50"] [:input {:id "distance" :type "range" :min "0.1" :max "2" :step "0.1" :value "0.5"}]] [:button.primary {:id "extrude"} "Extrude selected face"] [:h2 "History"] [:ol {:id "history"} [:li "Create cube"]] [:button {:id "undo"} "Undo"] [:button {:id "redo"} "Redo"]]]
+     [:script {:src "./js/app.js"}]]]))

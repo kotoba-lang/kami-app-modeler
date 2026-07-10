@@ -1,4 +1,6 @@
 .DS_Store
 .cpcache/
+.shadow-cljs/
 node_modules/
 dist/
+test/modeler-webgpu.png

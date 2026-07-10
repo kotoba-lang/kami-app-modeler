@@ -1,0 +1,1 @@
+{"name":"kami-app-modeler","private":true,"scripts":{"build":"shadow-cljs release app","verify:webgpu":"node test/verify-webgpu.mjs"},"devDependencies":{"shadow-cljs":"^2.28.20","playwright":"^1.48.0"}}
