@@ -31,7 +31,7 @@
   (html/html5
    [:html {:lang "en"}
     [:head [:meta {:charset "utf-8"}] [:meta {:name "viewport" :content "width=device-width,initial-scale=1"}]
-     [:title "Kami Modeler"] (css/style-node sheet)]
+     [:title "Kami Modeler"] [:style (css/css sheet)]]
     [:body [:header [:strong "KAMI MODELER"] [:span "Polygon authoring preview"] [:button {:id "export"} "Export project"]]
      [:main [:aside [:h2 "Scene"] [:button.object.selected "◆ Cube"] [:h2 "Tools"] [:button {:data-tool "select"} "Select"] [:button {:data-tool "extrude"} "Extrude"] [:button {:data-tool "move"} "Move"] [:p.hint "Choose Extrude, then use the control on the right."]]
       [:section.viewport [:div.grid] [:div {:id "cube" :aria-label "Selected cube"}] [:div.axis "Y\n│\n└── X"] [:div.status [:span {:id "tool"} "Select"] [:span {:id "faces"} "6 faces"]]]
