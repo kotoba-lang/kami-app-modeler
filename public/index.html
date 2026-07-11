@@ -7,12 +7,14 @@ header span,.hint { color: #9ca9c9; font-size: 12px; }
 .primary { background: #6f8fff; color: #071127; border: 0; font-weight: 700; }
 .viewport { position: relative; overflow: hidden; background: radial-gradient(circle at 50% 42%,#1e315a,#0a0f1e 62%); }
 body { margin: 0; height: 100vh; display: grid; grid-template-rows: 54px 1fr; font-family: Inter,ui-sans-serif,system-ui; background: #0b1020; color: #e8ecf8; }
+.modifier-row { display: grid; grid-template-columns: 1fr 30px 30px 30px; gap: 4px; align-items: center; font-size: 11px; }
 header strong { color: #9eb8ff; letter-spacing: .04em; }
 label { display: grid; gap: 8px; color: #bfcbe8; }
 h2 { margin: 8px 0 3px; font-size: 11px; text-transform: uppercase; letter-spacing: .12em; color: #91a1ca; }
 header button { margin-left: auto; }
 main { display: grid; grid-template-columns: 230px 1fr 260px; min-height: 0; }
 .status { right: 18px; bottom: 16px; display: flex; gap: 14px; background: #0b1020bb; padding: 8px; border-radius: 6px; }
+.modifier-row button { padding: 5px; text-align: center; }
 .axis { bottom: 24px; left: 26px; color: #ffadb7; }
 #gpu-canvas { width: 100%; height: 100%; display: block; }
 button:hover,.selected { border-color: #7d9cff; background: #293a70; }
@@ -62,6 +64,11 @@ button { border: 1px solid #35446e; border-radius: 7px; background: #171f3b; col
         <label>Location Y<input id="ty" type="number" step="0.1"></label>
         <label>Location Z<input id="tz" type="number" step="0.1"></label>
         <button id="apply-transform">Apply object transform</button>
+        <h2>Modifiers</h2>
+        <button id="add-mirror">＋ Mirror X</button>
+        <button id="add-subdivision">＋ Subdivision</button>
+        <button id="add-array">＋ Array</button>
+        <div id="modifier-stack"></div>
         <h2>Face Inspector</h2>
         <p id="selection">Face 1 selected</p>
         <label>Operation amount <output id="distanceValue">0.50</output><input id="distance" type="range" min="0.05" max="2" step="0.05" value="0.5"></label>

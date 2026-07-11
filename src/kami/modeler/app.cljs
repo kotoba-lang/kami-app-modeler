@@ -22,6 +22,7 @@
     {:positions positions :normals normals :indices (vec (range (count positions)))}))
 (defn- selected-object [] (modeling/find-object (:scene @state) (:selected-object @state)))
 (defn- selected-mesh [] (:object/mesh (selected-object)))
+(declare commit-scene!)
 
 (defn- refresh-mesh! []
   (let [combined (modeling/scene-mesh (:scene @state))]
@@ -49,10 +50,26 @@
     (when object
       (set! (.-value (.getElementById js/document "object-name")) (:object/name object))
       (doseq [[id value] (map vector ["tx" "ty" "tz"] (:object/translation object))]
-        (set! (.-value (.getElementById js/document id)) value)))
+        (set! (.-value (.getElementById js/document id)) value))
+      (let [stack (.getElementById js/document "modifier-stack")]
+        (set! (.-innerHTML stack) "")
+        (doseq [[index mod] (map-indexed vector (:object/modifiers object))]
+          (let [row (.createElement js/document "div") label (.createElement js/document "span")
+                up (.createElement js/document "button") down (.createElement js/document "button") remove (.createElement js/document "button")]
+            (set! (.-className row) "modifier-row")
+            (set! (.-textContent label) (str (name (:modifier/kind mod)) " " (pr-str (:modifier/options mod))))
+            (set! (.-textContent up) "↑") (set! (.-disabled up) (zero? index))
+            (.addEventListener up "click" #(commit-scene! (modeling/update-object (:scene @state) (:selected-object @state) modeling/move-modifier (:modifier/id mod) (dec index))))
+            (set! (.-textContent down) "↓") (set! (.-disabled down) (= index (dec (count (:object/modifiers object)))))
+            (.addEventListener down "click" #(commit-scene! (modeling/update-object (:scene @state) (:selected-object @state) modeling/move-modifier (:modifier/id mod) (inc index))))
+            (set! (.-textContent remove) "×")
+            (.addEventListener remove "click" #(commit-scene! (modeling/update-object (:scene @state) (:selected-object @state) modeling/remove-modifier (:modifier/id mod))))
+            (doseq [node [label up down remove]] (.appendChild row node)) (.appendChild stack row)))))
     (set! (.-textContent (.getElementById js/document "debug-state"))
           (js/JSON.stringify (clj->js {:objectCount (count (:scene/objects scene)) :selectedObject selected-id
-                                       :faceCount (count (:mesh/faces mesh))})))
+                                       :faceCount (count (:mesh/faces mesh))
+                                       :modifierCount (count (:object/modifiers object))
+                                       :evaluatedVertices (count (:mesh/vertices (modeling/evaluated-object-mesh object)))})))
     (set! (.-disabled (.getElementById js/document "undo")) (= 1 (count history)))
     (set! (.-disabled (.getElementById js/document "redo")) (empty? future))
     (set! (.-textContent (.getElementById js/document "shortcutHint"))
@@ -151,6 +168,12 @@
                               name (.-value (.getElementById js/document "object-name"))]
                           (commit-scene! (modeling/update-object (:scene @state) (:selected-object @state)
                                                                  (fn [o] (-> o (assoc :object/name name) (modeling/set-object-transform {:translation translation})))))))
+    (doseq [[id kind options] [["add-mirror" :mirror {:axis :x}]
+                               ["add-subdivision" :subdivision {:levels 1}]
+                               ["add-array" :array {:count 3 :offset [2.5 0 0]}]]]
+      (.addEventListener (.getElementById js/document id) "click"
+                         #(commit-scene! (modeling/update-object (:scene @state) (:selected-object @state)
+                                                                  modeling/add-modifier (modeling/modifier kind options)))))
     (.addEventListener (.getElementById js/document "import") "click" #(.click (.getElementById js/document "import-file")))
     (.addEventListener (.getElementById js/document "import-file") "change"
                        (fn [event]

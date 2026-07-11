@@ -25,7 +25,9 @@
              ".axis" {:bottom 24 :left 26 :color "#ffadb7"}
              ".status" {:right 18 :bottom 16 :display :flex :gap 14 :background "#0b1020bb" :padding 8 :border-radius 6}
              "label" {:display :grid :gap 8 :color "#bfcbe8"}
-             "input,select" {:accent-color "#8aa8ff" :background "#171f3b" :color "#e8ecf8" :border "1px solid #35446e" :padding 8}}})
+             "input,select" {:accent-color "#8aa8ff" :background "#171f3b" :color "#e8ecf8" :border "1px solid #35446e" :padding 8}
+             ".modifier-row" {:display :grid :grid-template-columns "1fr 30px 30px 30px" :gap 4 :align-items :center :font-size 11}
+             ".modifier-row button" {:padding 5 :text-align :center}}})
 
 (defn page []
   (html/html5
@@ -36,6 +38,8 @@
     [:body [:header [:strong "KAMI MODELER"] [:a {:href "https://kotoba-lang.github.io/kami-studio/"} "Studio"] [:span "WebGPU polygon workspace"] [:button {:id "new-cube"} "New Cube"] [:button {:id "import"} "Import EDN"] [:input {:id "import-file" :type "file" :accept ".edn" :style {:display "none"}}] [:button {:id "export"} "Export EDN"]]
      [:main [:aside [:h2 "Scene"] [:div {:id "scene-tree"}] [:button {:id "duplicate-object"} "Duplicate object"] [:button {:id "delete-object"} "Delete object"] [:h2 "Edit tools"] [:button.selected {:data-command "select"} "Select Face"] [:button {:id "inset"} "Inset"] [:button {:id "scale"} "Scale Face"] [:button {:id "move"} "Move Face"] [:button {:id "delete-face"} "Delete Face"] [:h2 "Interaction profile"] [:select {:id "profile"} [:option {:value "blender"} "Blender"] [:option {:value "maya"} "Maya"] [:option {:value "max"} "3ds Max"] [:option {:value "c4d"} "Cinema 4D"]] [:p.hint {:id "shortcutHint"} "Click Select · E Extrude · MMB Orbit · Ctrl+Z Undo"]]
       [:section.viewport [:canvas {:id "gpu-canvas" :aria-label "WebGPU mesh viewport"}] [:div.gpu-fallback {:id "gpu-status"} "Initializing WebGPU…"] [:div.axis "Y\n│\n└── X"] [:div.status [:span {:id "tool"} "Select Face"] [:span {:id "meshStats"} "8 vertices · 6 faces"]]]
-      [:aside [:h2 "Object Inspector"] [:label "Name" [:input {:id "object-name"}]] [:label "Location X" [:input {:id "tx" :type "number" :step 0.1}]] [:label "Location Y" [:input {:id "ty" :type "number" :step 0.1}]] [:label "Location Z" [:input {:id "tz" :type "number" :step 0.1}]] [:button {:id "apply-transform"} "Apply object transform"] [:h2 "Face Inspector"] [:p {:id "selection"} "Face 1 selected"] [:label "Operation amount " [:output {:id "distanceValue"} "0.50"] [:input {:id "distance" :type "range" :min "0.05" :max "2" :step "0.05" :value "0.5"}]] [:button.primary {:id "extrude"} "Extrude selected face"] [:button {:id "undo"} "Undo"] [:button {:id "redo"} "Redo"]]]
+      [:aside [:h2 "Object Inspector"] [:label "Name" [:input {:id "object-name"}]] [:label "Location X" [:input {:id "tx" :type "number" :step 0.1}]] [:label "Location Y" [:input {:id "ty" :type "number" :step 0.1}]] [:label "Location Z" [:input {:id "tz" :type "number" :step 0.1}]] [:button {:id "apply-transform"} "Apply object transform"]
+       [:h2 "Modifiers"] [:button {:id "add-mirror"} "＋ Mirror X"] [:button {:id "add-subdivision"} "＋ Subdivision"] [:button {:id "add-array"} "＋ Array"] [:div {:id "modifier-stack"}]
+       [:h2 "Face Inspector"] [:p {:id "selection"} "Face 1 selected"] [:label "Operation amount " [:output {:id "distanceValue"} "0.50"] [:input {:id "distance" :type "range" :min "0.05" :max "2" :step "0.05" :value "0.5"}]] [:button.primary {:id "extrude"} "Extrude selected face"] [:button {:id "undo"} "Undo"] [:button {:id "redo"} "Redo"]]]
      [:span {:id "debug-state" :style {:display "none"}}]
      [:script {:src "./js/app.js"}]]]))
