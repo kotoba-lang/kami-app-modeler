@@ -283,25 +283,34 @@
             (let [values (mapv #(read-one (+ offset (* i stride) (* % component-size))) (range components))]
               (if (= 1 components) (first values) values))) (range count))))
 
+(defn- gltf-primitive-object [doc buffer mesh-spec primitive id primitive-index]
+  (let [attrs (gobj/get primitive "attributes") positions (gltf-accessor doc buffer (gobj/get attrs "POSITION"))
+        indices (gltf-accessor doc buffer (gobj/get primitive "indices")) faces (mapv vec (partition 3 indices))
+        uvs (when (some? (gobj/get attrs "TEXCOORD_0")) (gltf-accessor doc buffer (gobj/get attrs "TEXCOORD_0")))
+        mesh (modeling/mesh positions faces uvs) materials (gobj/get doc "materials")
+        material-spec (when (and materials (some? (gobj/get primitive "material"))) (aget materials (gobj/get primitive "material")))
+        pbr (when material-spec (gobj/get material-spec "pbrMetallicRoughness"))
+        color (vec (or (some-> pbr (gobj/get "baseColorFactor") array-seq) [0.35 0.58 1.0 1.0]))
+        material {:material/base-color color :material/metallic (or (some-> pbr (gobj/get "metallicFactor")) 0.0)
+                  :material/roughness (or (some-> pbr (gobj/get "roughnessFactor")) 0.5)}
+        base-name (or (gobj/get mesh-spec "name") "Imported glTF")]
+    (modeling/object id (if (> (.-length (gobj/get mesh-spec "primitives")) 1)
+                          (str base-name " · " (inc primitive-index)) base-name) mesh {:material material})))
+
 (defn- import-gltf! [event]
   (when-let [file (aget (.. event -target -files) 0)]
     (-> (.text file)
         (.then (fn [text]
                  (let [doc (js/JSON.parse text) buffer-spec (aget (gobj/get doc "buffers") 0)
-                       buffer (base64->buffer (gobj/get buffer-spec "uri")) mesh-spec (aget (gobj/get doc "meshes") 0)
-                       primitive (aget (gobj/get mesh-spec "primitives") 0) attrs (gobj/get primitive "attributes")
-                       positions (gltf-accessor doc buffer (gobj/get attrs "POSITION"))
-                       indices (gltf-accessor doc buffer (gobj/get primitive "indices"))
-                       faces (mapv vec (partition 3 indices))
-                       uvs (when (some? (gobj/get attrs "TEXCOORD_0")) (gltf-accessor doc buffer (gobj/get attrs "TEXCOORD_0")))
-                       mesh (modeling/mesh positions faces uvs)
-                       materials (gobj/get doc "materials") material-spec (when materials (aget materials (or (gobj/get primitive "material") 0)))
-                       pbr (when material-spec (gobj/get material-spec "pbrMetallicRoughness"))
-                       color (vec (or (some-> pbr (gobj/get "baseColorFactor") array-seq) [0.35 0.58 1.0 1.0]))
-                       material {:material/base-color color :material/metallic (or (some-> pbr (gobj/get "metallicFactor")) 0.0)
-                                 :material/roughness (or (some-> pbr (gobj/get "roughnessFactor")) 0.5)}
-                       object (modeling/object 1 (or (gobj/get mesh-spec "name") "Imported glTF") mesh {:material material})]
-                   (apply-project! (modeling/scene [object])))))
+                       buffer (base64->buffer (gobj/get buffer-spec "uri")) meshes (array-seq (gobj/get doc "meshes"))
+                       specs (mapcat (fn [mesh-spec] (map-indexed (fn [primitive-index primitive] [mesh-spec primitive primitive-index])
+                                                                  (array-seq (gobj/get mesh-spec "primitives")))) meshes)
+                       objects (mapv (fn [id [mesh-spec primitive primitive-index]]
+                                       (gltf-primitive-object doc buffer mesh-spec primitive id primitive-index))
+                                     (range 1 (inc (count specs))) specs)]
+                   (when (empty? objects) (throw (js/Error. "glTF contains no mesh primitives")))
+                   (apply-project! (modeling/scene objects))
+                   (swap! state assoc :next-id (inc (count objects))))))
         (.catch #(js/console.error "glTF import failed" %)))))
 
 (defn- download-gltf! []
