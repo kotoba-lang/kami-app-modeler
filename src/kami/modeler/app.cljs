@@ -1,6 +1,7 @@
 (ns kami.modeler.app
   (:require [cljs.reader :as reader]
             [kami.modeling :as modeling]
+            [kami.modeler.project :as project]
             [kami.webgpu.mesh :as gpu-mesh]))
 
 (def cube (modeling/cube 2))
@@ -8,7 +9,8 @@
 
 (defonce state (atom {:scene initial-scene :selected-object 1 :next-id 2 :selected-face 1 :distance 0.5
                       :history [initial-scene] :future [] :azimuth 0.7 :elevation 0.45
-                      :mode :edit :profile :blender}))
+                      :mode :edit :profile :blender :project-id "untitled-model"
+                      :project-name "Untitled Model" :revision 0 :save-status :clean}))
 (defonce runtime (atom nil))
 
 (defn- sub3 [a b] (mapv - a b))
@@ -33,7 +35,7 @@
            (gpu-mesh/upload-mesh! mesh-context (render-geometry combined))))))
 
 (defn- update-ui! []
-  (let [{:keys [scene distance history future profile selected-face mode]} @state
+  (let [{:keys [scene distance history future profile selected-face mode save-status revision]} @state
         selected-id (:selected-object @state) mesh (selected-mesh) object (selected-object)]
     (set! (.-textContent (.getElementById js/document "distanceValue")) (.toFixed distance 2))
     (set! (.-textContent (.getElementById js/document "meshStats"))
@@ -76,7 +78,10 @@
                                        :faceCount (count (:mesh/faces mesh))
                                        :modifierCount (count (:object/modifiers object))
                                        :evaluatedVertices (count (:mesh/vertices (modeling/evaluated-object-mesh object)))
-                                       :mode (name mode) :profile (name profile)})))
+                                       :mode (name mode) :profile (name profile)
+                                       :projectVersion project/current-version :revision revision :saveStatus (name save-status)})))
+    (set! (.-textContent (.getElementById js/document "project-status"))
+          (str (name save-status) " · r" revision))
     (set! (.-disabled (.getElementById js/document "undo")) (= 1 (count history)))
     (set! (.-disabled (.getElementById js/document "redo")) (empty? future))
     (set! (.-textContent (.getElementById js/document "shortcutHint"))
@@ -86,7 +91,8 @@
                 "E Extrude · I Inset · G Move · S Scale · X Delete · Tab Mode"))))
 
 (defn- commit-scene! [scene]
-  (swap! state (fn [s] (-> s (assoc :scene scene :future []) (update :history conj scene))))
+  (swap! state (fn [s] (-> s (assoc :scene scene :future [] :save-status :dirty)
+                            (update :history conj scene) (update :revision inc))))
   (refresh-mesh!) (update-ui!))
 (defn- commit-mesh! [m]
   (commit-scene! (modeling/update-object (:scene @state) (:selected-object @state) assoc :object/mesh m)))
@@ -135,6 +141,51 @@
         :delete-face (delete-face!) :duplicate-object (duplicate-object!) :undo (undo!) :redo (redo!)
         :toggle-mode (toggle-mode!) nil))
 
+(def ^:private storage-key "kami.modeler.project.v2")
+(def ^:private backup-key "kami.modeler.project.backup")
+
+(defn- project-document []
+  (let [{:keys [project-id project-name scene selected-object selected-face mode
+                azimuth elevation profile]} @state]
+    (project/document {:id project-id :name project-name :scene scene
+                       :selection {:object-id selected-object :face-id selected-face :mode mode}
+                       :camera {:azimuth azimuth :elevation elevation}
+                       :interaction {:profile profile}})))
+
+(defn- save-project! []
+  (let [serialized (pr-str (project-document))
+        previous (.getItem js/localStorage storage-key)]
+    (when previous (.setItem js/localStorage backup-key previous))
+    (.setItem js/localStorage storage-key serialized)
+    (swap! state assoc :save-status :saved)
+    (update-ui!)))
+
+(defn- apply-project! [value]
+  (let [p (project/open value) scene (:project/scene p)
+        selection (:project/selection p) camera (:project/camera p)
+        interaction (:project/interaction p)
+        object-id (or (:object-id selection) (:object/id (first (:scene/objects scene))))]
+    (swap! state assoc :project-id (:project/id p) :project-name (:project/name p)
+           :scene scene :selected-object object-id :selected-face (:face-id selection)
+           :mode (:mode selection) :azimuth (:azimuth camera) :elevation (:elevation camera)
+           :profile (:profile interaction) :history [scene] :future [] :save-status :saved)
+    (set! (.-value (.getElementById js/document "profile")) (name (:profile interaction)))
+    (refresh-mesh!) (update-ui!)))
+
+(defn- load-project! []
+  (when-let [serialized (.getItem js/localStorage storage-key)]
+    (try (apply-project! (reader/read-string serialized))
+         (catch :default _
+           (when-let [backup (.getItem js/localStorage backup-key)]
+             (apply-project! (reader/read-string backup)))))))
+
+(defn- download-project! []
+  (let [a (.createElement js/document "a")
+        url (.createObjectURL js/URL (js/Blob. #js [(pr-str (project-document))]
+                                             #js {:type "application/edn"}))]
+    (set! (.-href a) url) (set! (.-download a) "model.kami-modeler.edn") (.click a)
+    (js/setTimeout #(.revokeObjectURL js/URL url) 0)))
+
 (defn- draw! []
   (when-let [{:keys [buffers] :as viewport} @runtime]
     (when buffers
@@ -180,6 +231,8 @@
     (.addEventListener (.getElementById js/document "delete-face") "click" delete-face!)
     (.addEventListener (.getElementById js/document "undo") "click" undo!)
     (.addEventListener (.getElementById js/document "redo") "click" redo!)
+    (.addEventListener (.getElementById js/document "save-project") "click" save-project!)
+    (.addEventListener (.getElementById js/document "load-project") "click" load-project!)
     (.addEventListener (.getElementById js/document "distance") "input" #(swap! state assoc :distance (js/parseFloat (.. % -target -value))))
     (.addEventListener (.getElementById js/document "profile") "change" #(do (swap! state assoc :profile (keyword (.. % -target -value))) (update-ui!)))
     (.addEventListener canvas "contextmenu" #(.preventDefault %))
@@ -221,11 +274,9 @@
                            (-> (.text file)
                                (.then (fn [text]
                                         (let [m (reader/read-string text)]
-                                          (let [scene (if (modeling/valid-mesh? m) (modeling/scene [(modeling/object 1 "Imported" m)]) m)]
-                                          (when (:scene/objects scene)
-                                            (swap! state assoc :scene scene :history [scene] :future [] :selected-object (:object/id (first (:scene/objects scene))) :selected-face 0)
-                                            (refresh-mesh!)
-                                            (update-ui!))))))))))
-    (.addEventListener (.getElementById js/document "export") "click" #(let [a (.createElement js/document "a") data (pr-str (:scene @state))] (set! (.-href a) (.createObjectURL js/URL (js/Blob. #js [data] #js {:type "application/edn"}))) (set! (.-download a) "scene.edn") (.click a)))
+                                          (if (modeling/valid-mesh? m)
+                                            (apply-project! (modeling/scene [(modeling/object 1 "Imported" m)]))
+                                            (apply-project! m)))))))))
+    (.addEventListener (.getElementById js/document "export") "click" download-project!)
     (update-ui!)
     (init-gpu! canvas)))
