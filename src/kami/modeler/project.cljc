@@ -1,6 +1,14 @@
 (ns kami.modeler.project)
 
 (def current-version 2)
+(def default-material {:material/base-color [0.35 0.58 1.0 1.0]
+                       :material/metallic 0.0 :material/roughness 0.5})
+
+(defn- normalize-materials [project]
+  (update-in project [:project/scene :scene/objects]
+             #(mapv (fn [object]
+                      (update object :object/material
+                              (fn [material] (merge default-material (or material {}))))) %)))
 
 (defn document
   [{:keys [id name scene selection camera interaction]}]
@@ -19,21 +27,22 @@
   (cond
     (= :modeler-project (:kami/document value))
     (case (:kami/version value)
-      2 value
+      2 (normalize-materials value)
       1 (-> value
             (assoc :kami/version 2
                    :project/selection {:object-id (some-> value :project/scene :scene/objects first :object/id)
                                        :face-id 0 :mode :object}
                    :project/camera {:azimuth 0.7 :elevation 0.45}
                    :project/interaction {:profile :blender})
-            (dissoc :project/version))
+            (dissoc :project/version)
+            normalize-materials)
       (throw (ex-info "Unsupported Modeler project version" {:version (:kami/version value)})))
 
     (:scene/objects value)
-    (document {:scene value
+    (normalize-materials (document {:scene value
                :selection {:object-id (some-> value :scene/objects first :object/id) :face-id 0 :mode :object}
                :camera {:azimuth 0.7 :elevation 0.45}
-               :interaction {:profile :blender}})
+               :interaction {:profile :blender}}))
 
     :else (throw (ex-info "Not a Modeler project or scene" {:value value}))))
 

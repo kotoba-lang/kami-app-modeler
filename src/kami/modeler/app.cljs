@@ -26,6 +26,14 @@
     {:positions positions :normals normals :indices (vec (range (count positions)))}))
 (defn- selected-object [] (modeling/find-object (:scene @state) (:selected-object @state)))
 (defn- selected-mesh [] (:object/mesh (selected-object)))
+(defn- channel->hex [value]
+  (let [hex (.toString (js/Math.round (* 255 value)) 16)] (if (= 1 (count hex)) (str "0" hex) hex)))
+(defn- color->hex [[r g b]] (str "#" (channel->hex r) (channel->hex g) (channel->hex b)))
+(defn- hex->color [hex]
+  (let [n (js/parseInt (subs hex 1) 16)]
+    [(/ (bit-and (bit-shift-right n 16) 255) 255)
+     (/ (bit-and (bit-shift-right n 8) 255) 255)
+     (/ (bit-and n 255) 255) 1.0]))
 (declare commit-scene!)
 
 (defn- refresh-mesh! []
@@ -76,6 +84,13 @@
       (set! (.-value (.getElementById js/document "object-name")) (:object/name object))
       (doseq [[id value] (map vector ["tx" "ty" "tz"] (:object/translation object))]
         (set! (.-value (.getElementById js/document id)) value))
+      (let [material (:object/material object)]
+        (set! (.-value (.getElementById js/document "base-color"))
+              (color->hex (:material/base-color material)))
+        (doseq [[id key] [["metallic" :material/metallic] ["roughness" :material/roughness]]]
+          (set! (.-value (.getElementById js/document id)) (get material key))
+          (set! (.-textContent (.getElementById js/document (str id "-value")))
+                (.toFixed (get material key) 2))))
       (let [parent-select (.getElementById js/document "object-parent")]
         (set! (.-innerHTML parent-select) "")
         (doseq [[value label] (concat [["" "None"]]
@@ -107,6 +122,7 @@
                                        :mode (name mode) :profile (name profile)
                                        :componentMode (name component-mode) :selectedVertex selected-vertex :selectedEdge selected-edge
                                        :visible (:object/visible? object) :locked (:object/locked? object) :parent (:object/parent object)
+                                       :material (:object/material object)
                                        :projectVersion project/current-version :revision revision :saveStatus (name save-status)})))
     (set! (.-textContent (.getElementById js/document "project-status"))
           (str (name save-status) " · r" revision))
@@ -312,6 +328,15 @@
     (.addEventListener (.getElementById js/document "object-parent") "change"
                        #(let [raw (.. % -target -value) parent-id (when (seq raw) (js/parseInt raw))]
                           (commit-scene! (modeling/reparent-object (:scene @state) (:selected-object @state) parent-id))))
+    (.addEventListener (.getElementById js/document "base-color") "change"
+                       #(let [material (assoc (:object/material (selected-object))
+                                             :material/base-color (hex->color (.. % -target -value)))]
+                          (commit-scene! (modeling/set-object-material (:scene @state) (:selected-object @state) material))))
+    (doseq [[id key] [["metallic" :material/metallic] ["roughness" :material/roughness]]]
+      (.addEventListener (.getElementById js/document id) "change"
+                         #(let [material (assoc (:object/material (selected-object)) key
+                                               (js/parseFloat (.. % -target -value)))]
+                            (commit-scene! (modeling/set-object-material (:scene @state) (:selected-object @state) material)))))
     (doseq [[id kind options] [["add-mirror" :mirror {:axis :x}]
                                ["add-subdivision" :subdivision {:levels 1}]
                                ["add-array" :array {:count 3 :offset [2.5 0 0]}]]]

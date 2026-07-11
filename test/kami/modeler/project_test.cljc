@@ -20,6 +20,14 @@
     (is (= 7 (get-in p [:project/selection :object-id])))
     (is (= :blender (get-in p [:project/interaction :profile])))))
 
+(deftest version-two-projects-receive-default-materials
+  (let [legacy-object (dissoc (first (:scene/objects scene)) :object/material)
+        p (project/document {:scene (modeling/scene [legacy-object])
+                             :selection {} :camera {} :interaction {}})
+        opened (project/open p)]
+    (is (= project/default-material
+           (get-in opened [:project/scene :scene/objects 0 :object/material])))))
+
 (deftest rejects-unknown-or-corrupt-documents
   (testing "unknown version"
     (is (thrown? #?(:clj Exception :cljs js/Error)
