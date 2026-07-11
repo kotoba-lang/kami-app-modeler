@@ -32,8 +32,12 @@
   (let [combined (modeling/scene-mesh (:scene @state))]
   (set! (.-__kami_modeler_mesh js/window) (clj->js combined))
   (when-let [{:keys [mesh-context]} @runtime]
-    (swap! runtime assoc :buffers
-           (gpu-mesh/upload-mesh! mesh-context (render-geometry combined))))))
+    (swap! runtime assoc :draws
+           (mapv (fn [{:object/keys [id material mesh]}]
+                   {:object-id id
+                    :color (subvec (vec (:material/base-color material)) 0 3)
+                    :buffers (gpu-mesh/upload-mesh! mesh-context (render-geometry mesh))})
+                 (modeling/scene-renderables (:scene @state)))))))
 
 (defn- update-ui! []
   (let [{:keys [scene distance history future profile selected-face selected-vertex selected-edge component-mode mode save-status revision]} @state
@@ -225,14 +229,14 @@
     (js/setTimeout #(.revokeObjectURL js/URL url) 0)))
 
 (defn- draw! []
-  (when-let [{:keys [buffers] :as viewport} @runtime]
-    (when buffers
+  (when-let [{:keys [draws] :as viewport} @runtime]
+    (when (seq draws)
       (let [{:keys [azimuth elevation]} @state
             d 6.0
             eye [(* d (js/Math.cos elevation) (js/Math.cos azimuth))
                  (* d (js/Math.sin elevation))
                  (* d (js/Math.cos elevation) (js/Math.sin azimuth))]]
-        (gpu-mesh/render-frame! viewport buffers eye [0 0 0] [0.35 0.58 1.0]))))
+        (gpu-mesh/render-scene! viewport draws eye [0 0 0]))))
   (js/requestAnimationFrame draw!))
 
 (defn- init-gpu! [canvas]
