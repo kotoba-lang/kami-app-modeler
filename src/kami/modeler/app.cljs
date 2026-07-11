@@ -7,7 +7,8 @@
 (def initial-scene (modeling/scene [(modeling/object 1 "Cube" cube)]))
 
 (defonce state (atom {:scene initial-scene :selected-object 1 :next-id 2 :selected-face 1 :distance 0.5
-                      :history [initial-scene] :future [] :azimuth 0.7 :elevation 0.45 :profile :blender}))
+                      :history [initial-scene] :future [] :azimuth 0.7 :elevation 0.45
+                      :mode :edit :profile :blender}))
 (defonce runtime (atom nil))
 
 (defn- sub3 [a b] (mapv - a b))
@@ -32,13 +33,18 @@
            (gpu-mesh/upload-mesh! mesh-context (render-geometry combined))))))
 
 (defn- update-ui! []
-  (let [{:keys [scene distance history future profile selected-face]} @state
+  (let [{:keys [scene distance history future profile selected-face mode]} @state
         selected-id (:selected-object @state) mesh (selected-mesh) object (selected-object)]
     (set! (.-textContent (.getElementById js/document "distanceValue")) (.toFixed distance 2))
     (set! (.-textContent (.getElementById js/document "meshStats"))
           (str (count (:scene/objects scene)) " objects · " (count (:mesh/vertices (modeling/scene-mesh scene))) " vertices"))
     (set! (.-textContent (.getElementById js/document "selection"))
-          (if (some? selected-face) (str "Face " selected-face " selected") "No face selected"))
+          (if (= mode :edit) (if (some? selected-face) (str "Face " selected-face " selected") "No face selected")
+              (str "Object · " (:object/name object))))
+    (set! (.-textContent (.getElementById js/document "mode-toggle")) (if (= mode :edit) "Edit Mode" "Object Mode"))
+    (set! (.-textContent (.getElementById js/document "tool")) (if (= mode :edit) "Face Select" "Object Select"))
+    (doseq [id ["extrude" "inset" "scale" "move" "delete-face"]]
+      (set! (.-disabled (.getElementById js/document id)) (not= mode :edit)))
     (let [tree (.getElementById js/document "scene-tree")]
       (set! (.-innerHTML tree) "")
       (doseq [o (:scene/objects scene)]
@@ -69,31 +75,65 @@
           (js/JSON.stringify (clj->js {:objectCount (count (:scene/objects scene)) :selectedObject selected-id
                                        :faceCount (count (:mesh/faces mesh))
                                        :modifierCount (count (:object/modifiers object))
-                                       :evaluatedVertices (count (:mesh/vertices (modeling/evaluated-object-mesh object)))})))
+                                       :evaluatedVertices (count (:mesh/vertices (modeling/evaluated-object-mesh object)))
+                                       :mode (name mode) :profile (name profile)})))
     (set! (.-disabled (.getElementById js/document "undo")) (= 1 (count history)))
     (set! (.-disabled (.getElementById js/document "redo")) (empty? future))
     (set! (.-textContent (.getElementById js/document "shortcutHint"))
-          (case profile :maya "Ctrl+E Extrude · Alt+drag Orbit · Ctrl+Z Undo"
-                :max "Alt+E Extrude · Alt+drag Orbit · Ctrl+Z Undo"
-                :c4d "D Extrude · Alt+drag Orbit · Ctrl+Z Undo"
-                "E Extrude · MMB Orbit · Ctrl+Z Undo"))))
+          (case profile :maya "Ctrl+E Extrude · W Move · R Scale · Ctrl+D Duplicate"
+                :max "Alt+E Extrude · W Move · R Scale · Ctrl+V Duplicate"
+                :c4d "D Extrude · E Move · T Scale · Ctrl+drag Orbit"
+                "E Extrude · I Inset · G Move · S Scale · X Delete · Tab Mode"))))
 
 (defn- commit-scene! [scene]
   (swap! state (fn [s] (-> s (assoc :scene scene :future []) (update :history conj scene))))
   (refresh-mesh!) (update-ui!))
 (defn- commit-mesh! [m]
   (commit-scene! (modeling/update-object (:scene @state) (:selected-object @state) assoc :object/mesh m)))
+(defn- edit-mode? [] (= :edit (:mode @state)))
 (defn- extrude! []
+  (when (edit-mode?)
   (let [{:keys [selected-face distance]} @state mesh (selected-mesh)
         next-selected-face (dec (count (:mesh/faces mesh)))]
     (swap! state assoc :selected-face next-selected-face)
-    (commit-mesh! (modeling/extrude-face mesh selected-face [0 0 distance]))))
-(defn- inset! [] (let [{:keys [selected-face distance]} @state mesh (selected-mesh)] (when (some? selected-face) (commit-mesh! (modeling/inset-face mesh selected-face (max 0.05 (min 0.95 distance)))))))
-(defn- scale! [] (let [{:keys [selected-face distance]} @state mesh (selected-mesh)] (when (some? selected-face) (commit-mesh! (modeling/scale-face mesh selected-face distance)))))
-(defn- move! [] (let [{:keys [selected-face distance]} @state mesh (selected-mesh)] (when (some? selected-face) (commit-mesh! (modeling/translate-face mesh selected-face [0 0 distance])))))
-(defn- delete-face! [] (let [{:keys [selected-face]} @state mesh (selected-mesh)] (when (and (some? selected-face) (> (count (:mesh/faces mesh)) 1)) (commit-mesh! (modeling/delete-face mesh selected-face)) (swap! state assoc :selected-face 0) (update-ui!))))
+    (commit-mesh! (modeling/extrude-face mesh selected-face [0 0 distance])))))
+(defn- inset! [] (let [{:keys [selected-face distance]} @state mesh (selected-mesh)] (when (and (edit-mode?) (some? selected-face)) (commit-mesh! (modeling/inset-face mesh selected-face (max 0.05 (min 0.95 distance)))))))
+(defn- scale! [] (let [{:keys [selected-face distance]} @state mesh (selected-mesh)] (when (and (edit-mode?) (some? selected-face)) (commit-mesh! (modeling/scale-face mesh selected-face distance)))))
+(defn- move! [] (let [{:keys [selected-face distance]} @state mesh (selected-mesh)] (when (and (edit-mode?) (some? selected-face)) (commit-mesh! (modeling/translate-face mesh selected-face [0 0 distance])))))
+(defn- delete-face! [] (let [{:keys [selected-face]} @state mesh (selected-mesh)] (when (and (edit-mode?) (some? selected-face) (> (count (:mesh/faces mesh)) 1)) (commit-mesh! (modeling/delete-face mesh selected-face)) (swap! state assoc :selected-face 0) (update-ui!))))
 (defn- undo! [] (when (> (count (:history @state)) 1) (swap! state (fn [s] (let [h (:history s) current (peek h) h' (pop h)] (assoc s :history h' :scene (peek h') :future (conj (:future s) current))))) (refresh-mesh!) (update-ui!)))
 (defn- redo! [] (when-let [scene (peek (:future @state))] (swap! state (fn [s] (assoc s :scene scene :history (conj (:history s) scene) :future (pop (:future s))))) (refresh-mesh!) (update-ui!)))
+(defn- duplicate-object! []
+  (let [id (:next-id @state)]
+    (commit-scene! (modeling/duplicate-object (:scene @state) (:selected-object @state) id))
+    (swap! state assoc :selected-object id :next-id (inc id)) (update-ui!)))
+(defn- delete-object! []
+  (when (> (count (:scene/objects (:scene @state))) 1)
+    (let [scene (modeling/delete-object (:scene @state) (:selected-object @state)) next-id (:object/id (first (:scene/objects scene)))]
+      (swap! state assoc :selected-object next-id :selected-face 0) (commit-scene! scene))))
+(defn- toggle-mode! [] (swap! state update :mode #(if (= % :edit) :object :edit)) (update-ui!))
+
+(defn- editable-target? [event]
+  (let [target (.-target event) tag (some-> target .-tagName .toLowerCase)]
+    (or (#{"input" "select" "textarea"} tag) (.-isContentEditable target))))
+(defn- command-for-event [event]
+  (let [key (.toLowerCase (.-key event)) ctrl (or (.-ctrlKey event) (.-metaKey event)) alt (.-altKey event)
+        profile (:profile @state)]
+    (cond
+      (and ctrl (= key "z") (.-shiftKey event)) :redo
+      (and ctrl (= key "z")) :undo
+      (and ctrl (= key "y")) :redo
+      (= key "tab") :toggle-mode
+      (= profile :blender) ({"e" :extrude "i" :inset "g" :move "s" :scale "x" :delete-face} key)
+      (= profile :maya) (cond (and ctrl (= key "e")) :extrude (and ctrl (= key "d")) :duplicate-object
+                              (= key "w") :move (= key "r") :scale (= key "delete") :delete-face)
+      (= profile :max) (cond (and alt (= key "e")) :extrude (and ctrl (= key "v")) :duplicate-object
+                             (= key "w") :move (= key "r") :scale (= key "delete") :delete-face)
+      (= profile :c4d) ({"d" :extrude "i" :inset "e" :move "t" :scale "backspace" :delete-face} key))))
+(defn- execute-command! [command]
+  (case command :extrude (extrude!) :inset (inset!) :move (move!) :scale (scale!)
+        :delete-face (delete-face!) :duplicate-object (duplicate-object!) :undo (undo!) :redo (redo!)
+        :toggle-mode (toggle-mode!) nil))
 
 (defn- draw! []
   (when-let [{:keys [buffers] :as viewport} @runtime]
@@ -143,7 +183,7 @@
     (.addEventListener (.getElementById js/document "distance") "input" #(swap! state assoc :distance (js/parseFloat (.. % -target -value))))
     (.addEventListener (.getElementById js/document "profile") "change" #(do (swap! state assoc :profile (keyword (.. % -target -value))) (update-ui!)))
     (.addEventListener canvas "contextmenu" #(.preventDefault %))
-    (.addEventListener canvas "pointerdown" #(if (or (= 1 (.-button %)) (.-altKey %)) (reset! drag [(.-clientX %) (.-clientY %)]) (pick-at! canvas %)))
+    (.addEventListener canvas "pointerdown" #(if (or (= 1 (.-button %)) (.-altKey %)) (reset! drag [(.-clientX %) (.-clientY %)]) (when (edit-mode?) (pick-at! canvas %))))
     (.addEventListener js/window "pointerup" #(reset! drag nil))
     (.addEventListener js/window "pointermove"
       (fn [event]
@@ -152,17 +192,17 @@
           (swap! state update :elevation
                  (fn [e] (max -1.3 (min 1.3 (+ e (* 0.008 (- (.-clientY event) y)))))))
           (reset! drag [(.-clientX event) (.-clientY event)]))))
-    (.addEventListener js/window "keydown" #(cond (and (.-ctrlKey %) (= "z" (.toLowerCase (.-key %)))) (undo!) (= "e" (.toLowerCase (.-key %))) (extrude!)))
+    (.addEventListener js/window "keydown"
+                       #(when-not (editable-target? %)
+                          (when-let [command (command-for-event %)]
+                            (.preventDefault %) (execute-command! command))))
+    (.addEventListener (.getElementById js/document "mode-toggle") "click" toggle-mode!)
     (.addEventListener (.getElementById js/document "new-cube") "click"
                        #(let [id (:next-id @state) o (modeling/object id (str "Cube " id) cube {:translation [(* id 0.5) 0 0]})]
                           (swap! state assoc :selected-object id :selected-face 1 :next-id (inc id))
                           (commit-scene! (modeling/add-object (:scene @state) o))))
-    (.addEventListener (.getElementById js/document "duplicate-object") "click"
-                       #(let [id (:next-id @state)] (commit-scene! (modeling/duplicate-object (:scene @state) (:selected-object @state) id)) (swap! state assoc :selected-object id :next-id (inc id)) (update-ui!)))
-    (.addEventListener (.getElementById js/document "delete-object") "click"
-                       #(when (> (count (:scene/objects (:scene @state))) 1)
-                          (let [scene (modeling/delete-object (:scene @state) (:selected-object @state)) next-id (:object/id (first (:scene/objects scene)))]
-                            (swap! state assoc :selected-object next-id :selected-face 0) (commit-scene! scene))))
+    (.addEventListener (.getElementById js/document "duplicate-object") "click" duplicate-object!)
+    (.addEventListener (.getElementById js/document "delete-object") "click" delete-object!)
     (.addEventListener (.getElementById js/document "apply-transform") "click"
                        #(let [translation (mapv (fn [id] (js/parseFloat (.-value (.getElementById js/document id)))) ["tx" "ty" "tz"])
                               name (.-value (.getElementById js/document "object-name"))]
