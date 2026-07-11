@@ -24,9 +24,9 @@ button:hover,.selected { border-color: #7d9cff; background: #293a70; }
 aside { padding: 18px; background: #101733; display: flex; flex-direction: column; gap: 9px; border-right: 1px solid #293456; }
 input,select { accent-color: #8aa8ff; background: #171f3b; color: #e8ecf8; border: 1px solid #35446e; padding: 8px; }
 header { display: flex; align-items: center; gap: 20px; padding: 0 18px; background: #111936; border-bottom: 1px solid #293456; }
-button { border: 1px solid #35446e; border-radius: 7px; background: #171f3b; color: #e8ecf8; padding: 9px 10px; text-align: left; cursor: pointer; }</style></head>
+button { border: 1px solid #35446e; border-radius: 7px; background: #171f3b; color: #e8ecf8; padding: 9px 10px; text-align: left; cursor: pointer; } :focus-visible { outline: 3px solid #ffd166; outline-offset: 2px; }</style></head>
   <body>
-    <header><strong>KAMI MODELER</strong><a href="https://kotoba-lang.github.io/kami-studio/">Studio</a><span>WebGPU polygon workspace</span><span id="project-status">clean · r0</span><button id="new-cube">New Cube</button><button id="save-project">Save</button><button id="load-project">Load</button><button id="import">Import Project</button><input id="import-file" type="file" accept=".edn,.kami-modeler.edn" style="display:none;"><button id="export">Export Project</button></header>
+    <header><strong>KAMI MODELER</strong><a href="https://kotoba-lang.github.io/kami-studio/">Studio</a><span>WebGPU polygon workspace</span><span id="project-status">clean · r0</span><button id="new-cube">New Cube</button><button id="save-project">Save</button><button id="load-project">Load</button><button id="import">Import Project</button><input id="import-file" aria-label="Import Modeler project file" type="file" accept=".edn,.kami-modeler.edn" style="display:none;"><button id="export">Export Project</button></header>
     <main>
       <aside>
         <h2>Scene</h2>
@@ -41,7 +41,7 @@ button { border: 1px solid #35446e; border-radius: 7px; background: #171f3b; col
         <button id="move">Move Face</button>
         <button id="delete-face">Delete Face</button>
         <h2>Interaction profile</h2>
-        <select id="profile">
+        <select id="profile" aria-label="Interaction profile">
           <option value="blender">Blender</option>
           <option value="maya">Maya</option>
           <option value="max">3ds Max</option>
