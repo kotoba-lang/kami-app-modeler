@@ -283,7 +283,15 @@
             (let [values (mapv #(read-one (+ offset (* i stride) (* % component-size))) (range components))]
               (if (= 1 components) (first values) values))) (range count))))
 
-(defn- gltf-primitive-object [doc buffer mesh-spec primitive id primitive-index]
+(defn- quaternion->euler [[x y z w]]
+  (let [sinr (* 2 (+ (* w x) (* y z))) cosr (- 1 (* 2 (+ (* x x) (* y y))))
+        sinp (* 2 (- (* w y) (* z x)))
+        rx (js/Math.atan2 sinr cosr)
+        ry (if (>= (js/Math.abs sinp) 1) (* (if (neg? sinp) -1 1) (/ js/Math.PI 2)) (js/Math.asin sinp))
+        siny (* 2 (+ (* w z) (* x y))) cosy (- 1 (* 2 (+ (* y y) (* z z))))]
+    [rx ry (js/Math.atan2 siny cosy)]))
+
+(defn- gltf-primitive-object [doc buffer mesh-spec primitive id primitive-index options]
   (let [attrs (gobj/get primitive "attributes") positions (gltf-accessor doc buffer (gobj/get attrs "POSITION"))
         indices (gltf-accessor doc buffer (gobj/get primitive "indices")) faces (mapv vec (partition 3 indices))
         uvs (when (some? (gobj/get attrs "TEXCOORD_0")) (gltf-accessor doc buffer (gobj/get attrs "TEXCOORD_0")))
@@ -295,18 +303,45 @@
                   :material/roughness (or (some-> pbr (gobj/get "roughnessFactor")) 0.5)}
         base-name (or (gobj/get mesh-spec "name") "Imported glTF")]
     (modeling/object id (if (> (.-length (gobj/get mesh-spec "primitives")) 1)
-                          (str base-name " · " (inc primitive-index)) base-name) mesh {:material material})))
+                          (str base-name " · " (inc primitive-index)) base-name) mesh (assoc options :material material))))
 
 (defn- import-gltf! [event]
   (when-let [file (aget (.. event -target -files) 0)]
     (-> (.text file)
         (.then (fn [text]
                  (let [doc (js/JSON.parse text) buffer-spec (aget (gobj/get doc "buffers") 0)
-                       buffer (base64->buffer (gobj/get buffer-spec "uri")) meshes (array-seq (gobj/get doc "meshes"))
-                       specs (mapcat (fn [mesh-spec] (map-indexed (fn [primitive-index primitive] [mesh-spec primitive primitive-index])
-                                                                  (array-seq (gobj/get mesh-spec "primitives")))) meshes)
-                       objects (mapv (fn [id [mesh-spec primitive primitive-index]]
-                                       (gltf-primitive-object doc buffer mesh-spec primitive id primitive-index))
+                       buffer (base64->buffer (gobj/get buffer-spec "uri")) meshes (gobj/get doc "meshes")
+                       nodes (vec (array-seq (or (gobj/get doc "nodes") #js [])))
+                       parent-node (reduce (fn [result [parent-index node]]
+                                             (reduce #(assoc %1 %2 parent-index) result
+                                                     (array-seq (or (gobj/get node "children") #js [])))) {} (map-indexed vector nodes))
+                       node-specs (vec (mapcat (fn [[node-index node]]
+                                                (when-let [mesh-index (gobj/get node "mesh")]
+                                                  (let [mesh-spec (aget meshes mesh-index)]
+                                                    (map-indexed (fn [primitive-index primitive]
+                                                                   {:node-index node-index :node node :mesh-spec mesh-spec
+                                                                    :primitive primitive :primitive-index primitive-index})
+                                                                 (array-seq (gobj/get mesh-spec "primitives"))))))
+                                              (map-indexed vector nodes)))
+                       specs (if (seq node-specs) node-specs
+                               (vec (mapcat (fn [[mesh-index mesh-spec]]
+                                              (map-indexed (fn [primitive-index primitive]
+                                                             {:node-index mesh-index :node #js {} :mesh-spec mesh-spec
+                                                              :primitive primitive :primitive-index primitive-index})
+                                                           (array-seq (gobj/get mesh-spec "primitives"))))
+                                            (map-indexed vector (array-seq meshes)))))
+                       node-first-id (reduce (fn [result [id spec]] (if (contains? result (:node-index spec)) result
+                                                                      (assoc result (:node-index spec) id)))
+                                             {} (map vector (range 1 (inc (count specs))) specs))
+                       objects (mapv (fn [id {:keys [node-index node mesh-spec primitive primitive-index]}]
+                                       (let [parent-index (get parent-node node-index)
+                                             anchor-id (get node-first-id node-index)
+                                             parent-id (if (pos? primitive-index) anchor-id (get node-first-id parent-index))
+                                             options {:translation (vec (or (some-> (gobj/get node "translation") array-seq) [0 0 0]))
+                                                      :rotation (quaternion->euler (vec (or (some-> (gobj/get node "rotation") array-seq) [0 0 0 1])))
+                                                      :scale (vec (or (some-> (gobj/get node "scale") array-seq) [1 1 1]))
+                                                      :parent parent-id}]
+                                         (gltf-primitive-object doc buffer mesh-spec primitive id primitive-index options)))
                                      (range 1 (inc (count specs))) specs)]
                    (when (empty? objects) (throw (js/Error. "glTF contains no mesh primitives")))
                    (apply-project! (modeling/scene objects))
