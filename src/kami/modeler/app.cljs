@@ -8,6 +8,7 @@
 (def initial-scene (modeling/scene [(modeling/object 1 "Cube" cube)]))
 
 (defonce state (atom {:scene initial-scene :selected-object 1 :next-id 2 :selected-face 1 :distance 0.5
+                      :component-mode :face :selected-vertex nil :selected-edge nil
                       :history [initial-scene] :future [] :azimuth 0.7 :elevation 0.45
                       :mode :edit :profile :blender :project-id "untitled-model"
                       :project-name "Untitled Model" :revision 0 :save-status :clean}))
@@ -35,18 +36,24 @@
            (gpu-mesh/upload-mesh! mesh-context (render-geometry combined))))))
 
 (defn- update-ui! []
-  (let [{:keys [scene distance history future profile selected-face mode save-status revision]} @state
+  (let [{:keys [scene distance history future profile selected-face selected-vertex selected-edge component-mode mode save-status revision]} @state
         selected-id (:selected-object @state) mesh (selected-mesh) object (selected-object)]
     (set! (.-textContent (.getElementById js/document "distanceValue")) (.toFixed distance 2))
     (set! (.-textContent (.getElementById js/document "meshStats"))
           (str (count (:scene/objects scene)) " objects · " (count (:mesh/vertices (modeling/scene-mesh scene))) " vertices"))
     (set! (.-textContent (.getElementById js/document "selection"))
-          (if (= mode :edit) (if (some? selected-face) (str "Face " selected-face " selected") "No face selected")
+          (if (= mode :edit) (case component-mode
+                               :vertex (if (some? selected-vertex) (str "Vertex " selected-vertex " selected") "No vertex selected")
+                               :edge (if (some? selected-edge) (str "Edge " (pr-str selected-edge) " selected") "No edge selected")
+                               (if (some? selected-face) (str "Face " selected-face " selected") "No face selected"))
               (str "Object · " (:object/name object))))
     (set! (.-textContent (.getElementById js/document "mode-toggle")) (if (= mode :edit) "Edit Mode" "Object Mode"))
-    (set! (.-textContent (.getElementById js/document "tool")) (if (= mode :edit) "Face Select" "Object Select"))
+    (set! (.-textContent (.getElementById js/document "tool")) (if (= mode :edit) (str (name component-mode) " Select") "Object Select"))
+    (doseq [kind [:vertex :edge :face]]
+      (.toggle (.-classList (.getElementById js/document (str "component-" (name kind)))) "selected" (= kind component-mode)))
     (doseq [id ["extrude" "inset" "scale" "move" "delete-face"]]
-      (set! (.-disabled (.getElementById js/document id)) (or (not= mode :edit) (:object/locked? object))))
+      (set! (.-disabled (.getElementById js/document id)) (or (not= mode :edit) (not= component-mode :face) (:object/locked? object))))
+    (set! (.-disabled (.getElementById js/document "move")) (or (not= mode :edit) (:object/locked? object)))
     (let [tree (.getElementById js/document "scene-tree")]
       (set! (.-innerHTML tree) "")
       (doseq [o (:scene/objects scene)]
@@ -94,6 +101,7 @@
                                        :modifierCount (count (:object/modifiers object))
                                        :evaluatedVertices (count (:mesh/vertices (modeling/evaluated-object-mesh object)))
                                        :mode (name mode) :profile (name profile)
+                                       :componentMode (name component-mode) :selectedVertex selected-vertex :selectedEdge selected-edge
                                        :visible (:object/visible? object) :locked (:object/locked? object) :parent (:object/parent object)
                                        :projectVersion project/current-version :revision revision :saveStatus (name save-status)})))
     (set! (.-textContent (.getElementById js/document "project-status"))
@@ -113,16 +121,22 @@
 (defn- commit-mesh! [m]
   (commit-scene! (modeling/update-object (:scene @state) (:selected-object @state) assoc :object/mesh m)))
 (defn- edit-mode? [] (and (= :edit (:mode @state)) (not (:object/locked? (selected-object)))))
+(defn- face-edit? [] (and (edit-mode?) (= :face (:component-mode @state))))
 (defn- extrude! []
-  (when (edit-mode?)
+  (when (face-edit?)
   (let [{:keys [selected-face distance]} @state mesh (selected-mesh)
         next-selected-face (dec (count (:mesh/faces mesh)))]
     (swap! state assoc :selected-face next-selected-face)
     (commit-mesh! (modeling/extrude-face mesh selected-face [0 0 distance])))))
-(defn- inset! [] (let [{:keys [selected-face distance]} @state mesh (selected-mesh)] (when (and (edit-mode?) (some? selected-face)) (commit-mesh! (modeling/inset-face mesh selected-face (max 0.05 (min 0.95 distance)))))))
-(defn- scale! [] (let [{:keys [selected-face distance]} @state mesh (selected-mesh)] (when (and (edit-mode?) (some? selected-face)) (commit-mesh! (modeling/scale-face mesh selected-face distance)))))
-(defn- move! [] (let [{:keys [selected-face distance]} @state mesh (selected-mesh)] (when (and (edit-mode?) (some? selected-face)) (commit-mesh! (modeling/translate-face mesh selected-face [0 0 distance])))))
-(defn- delete-face! [] (let [{:keys [selected-face]} @state mesh (selected-mesh)] (when (and (edit-mode?) (some? selected-face) (> (count (:mesh/faces mesh)) 1)) (commit-mesh! (modeling/delete-face mesh selected-face)) (swap! state assoc :selected-face 0) (update-ui!))))
+(defn- inset! [] (let [{:keys [selected-face distance]} @state mesh (selected-mesh)] (when (and (face-edit?) (some? selected-face)) (commit-mesh! (modeling/inset-face mesh selected-face (max 0.05 (min 0.95 distance)))))))
+(defn- scale! [] (let [{:keys [selected-face distance]} @state mesh (selected-mesh)] (when (and (face-edit?) (some? selected-face)) (commit-mesh! (modeling/scale-face mesh selected-face distance)))))
+(defn- move! []
+  (let [{:keys [component-mode selected-face selected-vertex selected-edge distance]} @state mesh (selected-mesh) delta [0 0 distance]]
+    (when (edit-mode?)
+      (case component-mode :vertex (when (some? selected-vertex) (commit-mesh! (modeling/translate-vertex mesh selected-vertex delta)))
+            :edge (when selected-edge (commit-mesh! (modeling/translate-edge mesh selected-edge delta)))
+            :face (when (some? selected-face) (commit-mesh! (modeling/translate-face mesh selected-face delta))) nil))))
+(defn- delete-face! [] (let [{:keys [selected-face]} @state mesh (selected-mesh)] (when (and (face-edit?) (some? selected-face) (> (count (:mesh/faces mesh)) 1)) (commit-mesh! (modeling/delete-face mesh selected-face)) (swap! state assoc :selected-face 0) (update-ui!))))
 (defn- undo! [] (when (> (count (:history @state)) 1) (swap! state (fn [s] (let [h (:history s) current (peek h) h' (pop h)] (assoc s :history h' :scene (peek h') :future (conj (:future s) current))))) (refresh-mesh!) (update-ui!)))
 (defn- redo! [] (when-let [scene (peek (:future @state))] (swap! state (fn [s] (assoc s :scene scene :history (conj (:history s) scene) :future (pop (:future s))))) (refresh-mesh!) (update-ui!)))
 (defn- duplicate-object! []
@@ -134,6 +148,9 @@
     (let [scene (modeling/delete-object (:scene @state) (:selected-object @state)) next-id (:object/id (first (:scene/objects scene)))]
       (swap! state assoc :selected-object next-id :selected-face 0) (commit-scene! scene))))
 (defn- toggle-mode! [] (swap! state update :mode #(if (= % :edit) :object :edit)) (update-ui!))
+(defn- set-component-mode! [kind]
+  (swap! state assoc :component-mode kind :selected-vertex nil :selected-edge nil)
+  (update-ui!))
 
 (defn- editable-target? [event]
   (let [target (.-target event) tag (some-> target .-tagName .toLowerCase)]
@@ -146,6 +163,7 @@
       (and ctrl (= key "z")) :undo
       (and ctrl (= key "y")) :redo
       (= key "tab") :toggle-mode
+      (= key "1") :vertex-mode (= key "2") :edge-mode (= key "3") :face-mode
       (= profile :blender) ({"e" :extrude "i" :inset "g" :move "s" :scale "x" :delete-face} key)
       (= profile :maya) (cond (and ctrl (= key "e")) :extrude (and ctrl (= key "d")) :duplicate-object
                               (= key "w") :move (= key "r") :scale (= key "delete") :delete-face)
@@ -155,16 +173,18 @@
 (defn- execute-command! [command]
   (case command :extrude (extrude!) :inset (inset!) :move (move!) :scale (scale!)
         :delete-face (delete-face!) :duplicate-object (duplicate-object!) :undo (undo!) :redo (redo!)
-        :toggle-mode (toggle-mode!) nil))
+        :toggle-mode (toggle-mode!) :vertex-mode (set-component-mode! :vertex)
+        :edge-mode (set-component-mode! :edge) :face-mode (set-component-mode! :face) nil))
 
 (def ^:private storage-key "kami.modeler.project.v2")
 (def ^:private backup-key "kami.modeler.project.backup")
 
 (defn- project-document []
-  (let [{:keys [project-id project-name scene selected-object selected-face mode
+  (let [{:keys [project-id project-name scene selected-object selected-face selected-vertex selected-edge component-mode mode
                 azimuth elevation profile]} @state]
     (project/document {:id project-id :name project-name :scene scene
-                       :selection {:object-id selected-object :face-id selected-face :mode mode}
+                       :selection {:object-id selected-object :face-id selected-face :vertex-id selected-vertex
+                                   :edge selected-edge :component-mode component-mode :mode mode}
                        :camera {:azimuth azimuth :elevation elevation}
                        :interaction {:profile profile}})))
 
@@ -183,7 +203,9 @@
         object-id (or (:object-id selection) (:object/id (first (:scene/objects scene))))]
     (swap! state assoc :project-id (:project/id p) :project-name (:project/name p)
            :scene scene :selected-object object-id :selected-face (:face-id selection)
-           :mode (:mode selection) :azimuth (:azimuth camera) :elevation (:elevation camera)
+           :selected-vertex (:vertex-id selection) :selected-edge (:edge selection)
+           :component-mode (:component-mode selection :face) :mode (:mode selection)
+           :azimuth (:azimuth camera) :elevation (:elevation camera)
            :profile (:profile interaction) :history [scene] :future [] :save-status :saved)
     (set! (.-value (.getElementById js/document "profile")) (name (:profile interaction)))
     (refresh-mesh!) (update-ui!)))
@@ -235,8 +257,12 @@
         f (normalize (mapv - [0 0 0] eye)) right (normalize (cross f [0 1 0])) up (cross right f)
         tan (js/Math.tan (/ js/Math.PI 6)) dir (normalize (add3 f (mul3 right (* x (/ (.-width r) (.-height r)) tan)) (mul3 up (* y tan))))
         object (selected-object) local-eye (mapv - eye (:object/translation object))
-        face (modeling/pick-face (:object/mesh object) local-eye dir)]
-    (when (some? face) (swap! state assoc :selected-face face) (update-ui!))))
+        kind (:component-mode @state) picked (modeling/pick-element (:object/mesh object) local-eye dir kind)]
+    (when (some? picked)
+      (case kind :vertex (swap! state assoc :selected-vertex picked)
+            :edge (swap! state assoc :selected-edge picked)
+            :face (swap! state assoc :selected-face picked) nil)
+      (update-ui!))))
 
 (defn ^:export init! []
   (let [canvas (.getElementById js/document "gpu-canvas") drag (atom nil)]
@@ -266,6 +292,8 @@
                           (when-let [command (command-for-event %)]
                             (.preventDefault %) (execute-command! command))))
     (.addEventListener (.getElementById js/document "mode-toggle") "click" toggle-mode!)
+    (doseq [kind [:vertex :edge :face]]
+      (.addEventListener (.getElementById js/document (str "component-" (name kind))) "click" #(set-component-mode! kind)))
     (.addEventListener (.getElementById js/document "new-cube") "click"
                        #(let [id (:next-id @state) o (modeling/object id (str "Cube " id) cube {:translation [(* id 0.5) 0 0]})]
                           (swap! state assoc :selected-object id :selected-face 1 :next-id (inc id))
