@@ -19,11 +19,13 @@
 (defn- norm [v]
   (let [l (max 1.0e-8 (js/Math.hypot (nth v 0) (nth v 1) (nth v 2)))]
     (mapv #(/ % l) v)))
-(defn- render-geometry [{:mesh/keys [vertices faces]}]
+(defn- render-geometry [{:mesh/keys [vertices faces uvs]}]
   (let [triangles (mapcat (fn [f] (map (fn [i] [(first f) (nth f i) (nth f (inc i))]) (range 1 (dec (count f))))) faces)
         positions (vec (mapcat (fn [tri] (map #(nth vertices %) tri)) triangles))
         normals (vec (mapcat (fn [[a b c]] (repeat 3 (norm (cross (sub3 (nth vertices b) (nth vertices a)) (sub3 (nth vertices c) (nth vertices a)))))) triangles))]
-    {:positions positions :normals normals :indices (vec (range (count positions)))}))
+    {:positions positions :normals normals
+     :uvs (when uvs (vec (mapcat (fn [tri] (map #(nth uvs %) tri)) triangles)))
+     :indices (vec (range (count positions)))}))
 (defn- selected-object [] (modeling/find-object (:scene @state) (:selected-object @state)))
 (defn- selected-mesh [] (:object/mesh (selected-object)))
 (defn- channel->hex [value]
@@ -125,6 +127,7 @@
                                        :componentMode (name component-mode) :selectedVertex selected-vertex :selectedEdge selected-edge
                                        :visible (:object/visible? object) :locked (:object/locked? object) :parent (:object/parent object)
                                        :material (:object/material object)
+                                       :uvCount (count (:mesh/uvs mesh))
                                        :projectVersion project/current-version :revision revision :saveStatus (name save-status)})))
     (set! (.-textContent (.getElementById js/document "project-status"))
           (str (name save-status) " · r" revision))
@@ -345,6 +348,9 @@
       (.addEventListener (.getElementById js/document id) "click"
                          #(commit-scene! (modeling/update-object (:scene @state) (:selected-object @state)
                                                                   modeling/add-modifier (modeling/modifier kind options)))))
+    (.addEventListener (.getElementById js/document "unwrap-uv") "click"
+                       #(let [axis (keyword (.-value (.getElementById js/document "unwrap-axis")))]
+                          (commit-mesh! (modeling/planar-unwrap (selected-mesh) axis))))
     (.addEventListener (.getElementById js/document "import") "click" #(.click (.getElementById js/document "import-file")))
     (.addEventListener (.getElementById js/document "import-file") "change"
                        (fn [event]

@@ -76,6 +76,9 @@ button { border: 1px solid #35446e; border-radius: 7px; background: #171f3b; col
         <label>Base Color<input id="base-color" type="color" value="#597fff"></label>
         <label>Metallic <output id="metallic-value">0.00</output><input id="metallic" type="range" min="0" max="1" step="0.01" value="0"></label>
         <label>Roughness <output id="roughness-value">0.50</output><input id="roughness" type="range" min="0" max="1" step="0.01" value="0.5"></label>
+        <h2>UV Mapping</h2>
+        <label>Projection axis<select id="unwrap-axis"><option value="z">Z · Front</option><option value="y">Y · Top</option><option value="x">X · Side</option></select></label>
+        <button id="unwrap-uv">Planar Unwrap</button>
         <h2>Modifiers</h2>
         <button id="add-mirror">＋ Mirror X</button>
         <button id="add-subdivision">＋ Subdivision</button>
