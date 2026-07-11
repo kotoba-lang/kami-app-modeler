@@ -24,8 +24,9 @@
 
 (defn- refresh-mesh! []
   (set! (.-__kami_modeler_mesh js/window) (clj->js (:mesh @state)))
-  (when-let [{:keys [mctx]} @runtime]
-    (swap! runtime assoc :buffers (gpu-mesh/upload-mesh! mctx (render-geometry (:mesh @state))))))
+  (when-let [{:keys [mesh-context]} @runtime]
+    (swap! runtime assoc :buffers
+           (gpu-mesh/upload-mesh! mesh-context (render-geometry (:mesh @state))))))
 
 (defn- update-ui! []
   (let [{:keys [mesh distance history future profile]} @state]
@@ -54,24 +55,27 @@
 (defn- redo! [] (when-let [m (peek (:future @state))] (swap! state (fn [s] (assoc s :mesh m :history (conj (:history s) m) :future (pop (:future s))))) (refresh-mesh!) (update-ui!)))
 
 (defn- draw! []
-  (when-let [{:keys [^js device ^js ctx ^js depth mctx buffers w h]} @runtime]
-    (let [{:keys [azimuth elevation]} @state d 6.0 eye [(* d (js/Math.cos elevation) (js/Math.cos azimuth)) (* d (js/Math.sin elevation)) (* d (js/Math.cos elevation) (js/Math.sin azimuth))]
-          vp (gpu-mesh/view-projection eye [0 0 0] (/ w h)) enc (.createCommandEncoder device)
-          pass (.beginRenderPass enc #js {:colorAttachments #js [#js {:view (.createView (.getCurrentTexture ctx)) :loadOp "clear" :storeOp "store" :clearValue #js {:r 0.035 :g 0.055 :b 0.10 :a 1}}] :depthStencilAttachment #js {:view (.createView depth) :depthLoadOp "clear" :depthStoreOp "store" :depthClearValue 1}})]
-      (gpu-mesh/draw! mctx pass buffers vp [0.35 0.58 1.0] [] []) (.end pass) (.submit (.-queue device) #js [(.finish enc)])))
+  (when-let [{:keys [buffers] :as viewport} @runtime]
+    (when buffers
+      (let [{:keys [azimuth elevation]} @state
+            d 6.0
+            eye [(* d (js/Math.cos elevation) (js/Math.cos azimuth))
+                 (* d (js/Math.sin elevation))
+                 (* d (js/Math.cos elevation) (js/Math.sin azimuth))]]
+        (gpu-mesh/render-frame! viewport buffers eye [0 0 0] [0.35 0.58 1.0]))))
   (js/requestAnimationFrame draw!))
 
-(defn- init-gpu! [^js canvas]
-  (let [^js gpu (.-gpu js/navigator)]
-    (-> (.requestAdapter gpu) (.then (fn [^js adapter] (.requestDevice adapter)))
-      (.then (fn [^js device] (let [fmt (.getPreferredCanvasFormat gpu) w (.-clientWidth canvas) h (.-clientHeight canvas) ^js ctx (.getContext canvas "webgpu")
-                                _ (set! (.-width canvas) w) _ (set! (.-height canvas) h) _ (.configure ctx #js {:device device :format fmt :alphaMode "opaque"})
-                                ^js depth (.createTexture device #js {:size #js [w h] :format "depth24plus" :usage (.-RENDER_ATTACHMENT js/GPUTextureUsage)}) mctx (gpu-mesh/init! device fmt)]
-                            (reset! runtime {:device device :ctx ctx :depth depth :mctx mctx :w w :h h}) (refresh-mesh!)
-                            (set! (.-textContent (.getElementById js/document "gpu-status")) "")
-                            (set! (.-__kami_modeler_ready js/window) true)
-                            (draw!))))
-      (.catch (fn [e] (set! (.-textContent (.getElementById js/document "gpu-status")) (str "WebGPU unavailable: " e)))))))
+(defn- init-gpu! [canvas]
+  (-> (gpu-mesh/init-canvas! canvas)
+      (.then (fn [viewport]
+               (reset! runtime viewport)
+               (refresh-mesh!)
+               (set! (.-textContent (.getElementById js/document "gpu-status")) "")
+               (set! (.-__kami_modeler_ready js/window) true)
+               (draw!)))
+      (.catch (fn [e]
+                (set! (.-textContent (.getElementById js/document "gpu-status"))
+                      (str "WebGPU unavailable: " e))))))
 
 (defn ^:export init! []
   (let [canvas (.getElementById js/document "gpu-canvas") drag (atom nil)]
@@ -92,4 +96,4 @@
     (.addEventListener js/window "keydown" #(cond (and (.-ctrlKey %) (= "z" (.toLowerCase (.-key %)))) (undo!) (= "e" (.toLowerCase (.-key %))) (extrude!)))
     (.addEventListener (.getElementById js/document "export") "click" #(let [a (.createElement js/document "a") data (pr-str (:mesh @state))] (set! (.-href a) (.createObjectURL js/URL (js/Blob. #js [data] #js {:type "application/edn"}))) (set! (.-download a) "model.edn") (.click a)))
     (update-ui!)
-    (if (.-gpu js/navigator) (init-gpu! canvas) (set! (.-textContent (.getElementById js/document "gpu-status")) "WebGPU requires Chrome/Edge 113+"))))
+    (init-gpu! canvas)))
