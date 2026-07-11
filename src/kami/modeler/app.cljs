@@ -1,5 +1,6 @@
 (ns kami.modeler.app
   (:require [cljs.reader :as reader]
+            [goog.object :as gobj]
             [kami.modeling :as modeling]
             [kami.modeler.project :as project]
             [kami.webgpu.mesh :as gpu-mesh]))
@@ -36,7 +37,7 @@
     [(/ (bit-and (bit-shift-right n 16) 255) 255)
      (/ (bit-and (bit-shift-right n 8) 255) 255)
      (/ (bit-and n 255) 255) 1.0]))
-(declare commit-scene!)
+(declare commit-scene! apply-project!)
 
 (defn- refresh-mesh! []
   (let [combined (modeling/scene-mesh (:scene @state))]
@@ -258,6 +259,51 @@
           (.push parts (.join chars "")) (recur end))))
     (js/btoa (.join parts ""))))
 
+(defn- base64->buffer [uri]
+  (let [encoded (second (.split uri ",")) binary (js/atob encoded)
+        bytes (js/Uint8Array. (.-length binary))]
+    (dotimes [i (.-length binary)] (aset bytes i (.charCodeAt binary i)))
+    (.-buffer bytes)))
+
+(defn- gltf-accessor [doc buffer accessor-index]
+  (let [accessor (aget (gobj/get doc "accessors") accessor-index)
+        view-spec (aget (gobj/get doc "bufferViews") (gobj/get accessor "bufferView"))
+        offset (+ (or (gobj/get view-spec "byteOffset") 0) (or (gobj/get accessor "byteOffset") 0))
+        count (gobj/get accessor "count") components ({"SCALAR" 1 "VEC2" 2 "VEC3" 3 "VEC4" 4} (gobj/get accessor "type"))
+        component-type (gobj/get accessor "componentType")
+        component-size ({5121 1 5123 2 5125 4 5126 4} component-type)
+        stride (or (gobj/get view-spec "byteStride") (* components component-size)) view (js/DataView. buffer)
+        read-one (fn [byte-offset]
+                   (case component-type 5121 (.getUint8 view byte-offset)
+                         5123 (.getUint16 view byte-offset true)
+                         5125 (.getUint32 view byte-offset true)
+                         5126 (.getFloat32 view byte-offset true)
+                         (throw (js/Error. (str "Unsupported glTF component type " component-type)))))]
+    (mapv (fn [i]
+            (let [values (mapv #(read-one (+ offset (* i stride) (* % component-size))) (range components))]
+              (if (= 1 components) (first values) values))) (range count))))
+
+(defn- import-gltf! [event]
+  (when-let [file (aget (.. event -target -files) 0)]
+    (-> (.text file)
+        (.then (fn [text]
+                 (let [doc (js/JSON.parse text) buffer-spec (aget (gobj/get doc "buffers") 0)
+                       buffer (base64->buffer (gobj/get buffer-spec "uri")) mesh-spec (aget (gobj/get doc "meshes") 0)
+                       primitive (aget (gobj/get mesh-spec "primitives") 0) attrs (gobj/get primitive "attributes")
+                       positions (gltf-accessor doc buffer (gobj/get attrs "POSITION"))
+                       indices (gltf-accessor doc buffer (gobj/get primitive "indices"))
+                       faces (mapv vec (partition 3 indices))
+                       uvs (when (some? (gobj/get attrs "TEXCOORD_0")) (gltf-accessor doc buffer (gobj/get attrs "TEXCOORD_0")))
+                       mesh (modeling/mesh positions faces uvs)
+                       materials (gobj/get doc "materials") material-spec (when materials (aget materials (or (gobj/get primitive "material") 0)))
+                       pbr (when material-spec (gobj/get material-spec "pbrMetallicRoughness"))
+                       color (vec (or (some-> pbr (gobj/get "baseColorFactor") array-seq) [0.35 0.58 1.0 1.0]))
+                       material {:material/base-color color :material/metallic (or (some-> pbr (gobj/get "metallicFactor")) 0.0)
+                                 :material/roughness (or (some-> pbr (gobj/get "roughnessFactor")) 0.5)}
+                       object (modeling/object 1 (or (gobj/get mesh-spec "name") "Imported glTF") mesh {:material material})]
+                   (apply-project! (modeling/scene [object])))))
+        (.catch #(js/console.error "glTF import failed" %)))))
+
 (defn- download-gltf! []
   (let [{:keys [positions normals indices]} (render-geometry (modeling/scene-mesh (:scene @state)))
         position-flat (vec (mapcat identity positions)) normal-flat (vec (mapcat identity normals))
@@ -388,6 +434,8 @@
                        #(let [axis (keyword (.-value (.getElementById js/document "unwrap-axis")))]
                           (commit-mesh! (modeling/planar-unwrap (selected-mesh) axis))))
     (.addEventListener (.getElementById js/document "import") "click" #(.click (.getElementById js/document "import-file")))
+    (.addEventListener (.getElementById js/document "import-gltf") "click" #(.click (.getElementById js/document "import-gltf-file")))
+    (.addEventListener (.getElementById js/document "import-gltf-file") "change" import-gltf!)
     (.addEventListener (.getElementById js/document "import-file") "change"
                        (fn [event]
                          (when-let [file (aget (.. event -target -files) 0)]
