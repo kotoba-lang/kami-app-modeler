@@ -27,6 +27,8 @@
              "label" {:display :grid :gap 8 :color "#bfcbe8"}
              "input,select" {:accent-color "#8aa8ff" :background "#171f3b" :color "#e8ecf8" :border "1px solid #35446e" :padding 8}
              ".modifier-row" {:display :grid :grid-template-columns "1fr 30px 30px 30px" :gap 4 :align-items :center :font-size 11}
+             ".outliner-row" {:display :grid :grid-template-columns "1fr 38px 38px" :gap 4}
+             ".outliner-row button" {:padding 6}
              ".modifier-row button" {:padding 5 :text-align :center}}})
 
 (defn page []

@@ -46,19 +46,34 @@
     (set! (.-textContent (.getElementById js/document "mode-toggle")) (if (= mode :edit) "Edit Mode" "Object Mode"))
     (set! (.-textContent (.getElementById js/document "tool")) (if (= mode :edit) "Face Select" "Object Select"))
     (doseq [id ["extrude" "inset" "scale" "move" "delete-face"]]
-      (set! (.-disabled (.getElementById js/document id)) (not= mode :edit)))
+      (set! (.-disabled (.getElementById js/document id)) (or (not= mode :edit) (:object/locked? object))))
     (let [tree (.getElementById js/document "scene-tree")]
       (set! (.-innerHTML tree) "")
       (doseq [o (:scene/objects scene)]
-        (let [b (.createElement js/document "button")]
+        (let [row (.createElement js/document "div") b (.createElement js/document "button")
+              visible (.createElement js/document "button") locked (.createElement js/document "button")]
+          (set! (.-className row) "outliner-row")
           (set! (.-textContent b) (str "◆ " (:object/name o)))
           (when (= selected-id (:object/id o)) (.add (.-classList b) "selected"))
-          (.addEventListener b "click" #(do (swap! state assoc :selected-object (:object/id o) :selected-face 0) (update-ui!)))
-          (.appendChild tree b))))
+          (.addEventListener b "click" #(when-not (:object/locked? o) (swap! state assoc :selected-object (:object/id o) :selected-face 0) (update-ui!)))
+          (set! (.-textContent visible) (if (:object/visible? o) "◉" "○")) (set! (.-title visible) "Toggle visibility")
+          (.addEventListener visible "click" #(commit-scene! (modeling/set-object-visible (:scene @state) (:object/id o) (not (:object/visible? o)))))
+          (set! (.-textContent locked) (if (:object/locked? o) "🔒" "🔓")) (set! (.-title locked) "Toggle lock")
+          (.addEventListener locked "click" #(commit-scene! (modeling/set-object-locked (:scene @state) (:object/id o) (not (:object/locked? o)))))
+          (doseq [node [b visible locked]] (.appendChild row node)) (.appendChild tree row))))
     (when object
       (set! (.-value (.getElementById js/document "object-name")) (:object/name object))
       (doseq [[id value] (map vector ["tx" "ty" "tz"] (:object/translation object))]
         (set! (.-value (.getElementById js/document id)) value))
+      (let [parent-select (.getElementById js/document "object-parent")]
+        (set! (.-innerHTML parent-select) "")
+        (doseq [[value label] (concat [["" "None"]]
+                                     (map (fn [o] [(str (:object/id o)) (:object/name o)])
+                                          (remove #(= (:object/id %) selected-id) (:scene/objects scene))))]
+          (let [option (.createElement js/document "option")] (set! (.-value option) value) (set! (.-textContent option) label) (.appendChild parent-select option)))
+        (set! (.-value parent-select) (str (or (:object/parent object) ""))))
+      (doseq [id ["object-name" "tx" "ty" "tz" "object-parent" "apply-transform" "add-mirror" "add-subdivision" "add-array" "delete-object"]]
+        (set! (.-disabled (.getElementById js/document id)) (:object/locked? object)))
       (let [stack (.getElementById js/document "modifier-stack")]
         (set! (.-innerHTML stack) "")
         (doseq [[index mod] (map-indexed vector (:object/modifiers object))]
@@ -79,6 +94,7 @@
                                        :modifierCount (count (:object/modifiers object))
                                        :evaluatedVertices (count (:mesh/vertices (modeling/evaluated-object-mesh object)))
                                        :mode (name mode) :profile (name profile)
+                                       :visible (:object/visible? object) :locked (:object/locked? object) :parent (:object/parent object)
                                        :projectVersion project/current-version :revision revision :saveStatus (name save-status)})))
     (set! (.-textContent (.getElementById js/document "project-status"))
           (str (name save-status) " · r" revision))
@@ -96,7 +112,7 @@
   (refresh-mesh!) (update-ui!))
 (defn- commit-mesh! [m]
   (commit-scene! (modeling/update-object (:scene @state) (:selected-object @state) assoc :object/mesh m)))
-(defn- edit-mode? [] (= :edit (:mode @state)))
+(defn- edit-mode? [] (and (= :edit (:mode @state)) (not (:object/locked? (selected-object)))))
 (defn- extrude! []
   (when (edit-mode?)
   (let [{:keys [selected-face distance]} @state mesh (selected-mesh)
@@ -261,6 +277,9 @@
                               name (.-value (.getElementById js/document "object-name"))]
                           (commit-scene! (modeling/update-object (:scene @state) (:selected-object @state)
                                                                  (fn [o] (-> o (assoc :object/name name) (modeling/set-object-transform {:translation translation})))))))
+    (.addEventListener (.getElementById js/document "object-parent") "change"
+                       #(let [raw (.. % -target -value) parent-id (when (seq raw) (js/parseInt raw))]
+                          (commit-scene! (modeling/reparent-object (:scene @state) (:selected-object @state) parent-id))))
     (doseq [[id kind options] [["add-mirror" :mirror {:axis :x}]
                                ["add-subdivision" :subdivision {:levels 1}]
                                ["add-array" :array {:count 3 :offset [2.5 0 0]}]]]
