@@ -44,6 +44,8 @@
            (mapv (fn [{:object/keys [id material mesh]}]
                    {:object-id id
                     :color (subvec (vec (:material/base-color material)) 0 3)
+                    :material {:metallic (:material/metallic material)
+                               :roughness (:material/roughness material)}
                     :buffers (gpu-mesh/upload-mesh! mesh-context (render-geometry mesh))})
                  (modeling/scene-renderables (:scene @state)))))))
 
