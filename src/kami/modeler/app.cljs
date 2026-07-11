@@ -249,6 +249,42 @@
     (set! (.-href a) url) (set! (.-download a) "model.kami-modeler.edn") (.click a)
     (js/setTimeout #(.revokeObjectURL js/URL url) 0)))
 
+(defn- bytes->base64 [bytes]
+  (let [chunk 8192 parts (array)]
+    (loop [offset 0]
+      (when (< offset (.-length bytes))
+        (let [end (min (.-length bytes) (+ offset chunk)) chars (array)]
+          (doseq [i (range offset end)] (.push chars (.fromCharCode js/String (aget bytes i))))
+          (.push parts (.join chars "")) (recur end))))
+    (js/btoa (.join parts ""))))
+
+(defn- download-gltf! []
+  (let [{:keys [positions normals indices]} (render-geometry (modeling/scene-mesh (:scene @state)))
+        position-flat (vec (mapcat identity positions)) normal-flat (vec (mapcat identity normals))
+        position-bytes (* 4 (count position-flat)) normal-bytes (* 4 (count normal-flat)) index-bytes (* 4 (count indices))
+        buffer (js/ArrayBuffer. (+ position-bytes normal-bytes index-bytes)) view (js/DataView. buffer)]
+    (doseq [[i value] (map-indexed vector position-flat)] (.setFloat32 view (* i 4) value true))
+    (doseq [[i value] (map-indexed vector normal-flat)] (.setFloat32 view (+ position-bytes (* i 4)) value true))
+    (doseq [[i value] (map-indexed vector indices)] (.setUint32 view (+ position-bytes normal-bytes (* i 4)) value true))
+    (let [axes (apply map vector positions) minima (mapv #(reduce min %) axes) maxima (mapv #(reduce max %) axes)
+          doc {:asset {:version "2.0" :generator "Kami Modeler / kami-engine"}
+               :scene 0 :scenes [{:nodes [0]}] :nodes [{:name (:project-name @state) :mesh 0}]
+               :meshes [{:name (:project-name @state) :primitives [{:attributes {:POSITION 0 :NORMAL 1} :indices 2
+                                                                      :material 0 :mode 4}]}]
+               :materials [{:name "Kami Material" :pbrMetallicRoughness {:baseColorFactor [0.35 0.58 1.0 1.0]
+                                                                           :metallicFactor 0.0 :roughnessFactor 0.5}}]
+               :buffers [{:byteLength (.-byteLength buffer)
+                          :uri (str "data:application/octet-stream;base64," (bytes->base64 (js/Uint8Array. buffer)))}]
+               :bufferViews [{:buffer 0 :byteOffset 0 :byteLength position-bytes :target 34962}
+                             {:buffer 0 :byteOffset position-bytes :byteLength normal-bytes :target 34962}
+                             {:buffer 0 :byteOffset (+ position-bytes normal-bytes) :byteLength index-bytes :target 34963}]
+               :accessors [{:bufferView 0 :componentType 5126 :count (count positions) :type "VEC3" :min minima :max maxima}
+                           {:bufferView 1 :componentType 5126 :count (count normals) :type "VEC3"}
+                           {:bufferView 2 :componentType 5125 :count (count indices) :type "SCALAR"}]}
+          a (.createElement js/document "a") url (.createObjectURL js/URL (js/Blob. #js [(js/JSON.stringify (clj->js doc) nil 2)] #js {:type "model/gltf+json"}))]
+      (set! (.-href a) url) (set! (.-download a) "model.gltf") (.click a)
+      (js/setTimeout #(.revokeObjectURL js/URL url) 0))))
+
 (defn- draw! []
   (when-let [{:keys [draws] :as viewport} @runtime]
     (when (seq draws)
@@ -362,5 +398,6 @@
                                             (apply-project! (modeling/scene [(modeling/object 1 "Imported" m)]))
                                             (apply-project! m)))))))))
     (.addEventListener (.getElementById js/document "export") "click" download-project!)
+    (.addEventListener (.getElementById js/document "export-gltf") "click" download-gltf!)
     (update-ui!)
     (init-gpu! canvas)))
