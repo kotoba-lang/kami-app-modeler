@@ -22,20 +22,17 @@ input,select { accent-color: #8aa8ff; background: #171f3b; color: #e8ecf8; borde
 header { display: flex; align-items: center; gap: 20px; padding: 0 18px; background: #111936; border-bottom: 1px solid #293456; }
 button { border: 1px solid #35446e; border-radius: 7px; background: #171f3b; color: #e8ecf8; padding: 9px 10px; text-align: left; cursor: pointer; }</style></head>
   <body>
-    <header>
-      <strong>KAMI MODELER</strong>
-      <a href="https://kotoba-lang.github.io/kami-studio/">Studio</a>
-      <span>WGPU polygon workspace</span>
-      <button id="export">Export EDN</button>
-    </header>
+    <header><strong>KAMI MODELER</strong><a href="https://kotoba-lang.github.io/kami-studio/">Studio</a><span>WebGPU polygon workspace</span><button id="new-cube">New Cube</button><button id="import">Import EDN</button><input id="import-file" type="file" accept=".edn" style="display:none;"><button id="export">Export EDN</button></header>
     <main>
       <aside>
         <h2>Scene</h2>
         <button class="object selected">◆ Cube</button>
         <h2>Tools</h2>
-        <button data-command="select">Select</button>
-        <button data-command="extrude">Extrude</button>
-        <button data-command="orbit">Orbit</button>
+        <button class="selected" data-command="select">Select Face</button>
+        <button id="inset">Inset</button>
+        <button id="scale">Scale Face</button>
+        <button id="move">Move Face</button>
+        <button id="delete">Delete Face</button>
         <h2>Interaction profile</h2>
         <select id="profile">
           <option value="blender">Blender</option>
@@ -43,7 +40,7 @@ button { border: 1px solid #35446e; border-radius: 7px; background: #171f3b; col
           <option value="max">3ds Max</option>
           <option value="c4d">Cinema 4D</option>
         </select>
-        <p class="hint" id="shortcutHint">E Extrude · MMB Orbit · Ctrl+Z Undo</p>
+        <p class="hint" id="shortcutHint">Click Select · E Extrude · MMB Orbit · Ctrl+Z Undo</p>
       </aside>
       <section class="viewport">
         <canvas id="gpu-canvas" aria-label="WebGPU mesh viewport"></canvas>
@@ -58,7 +55,8 @@ button { border: 1px solid #35446e; border-radius: 7px; background: #171f3b; col
       </section>
       <aside>
         <h2>Face Inspector</h2>
-        <label>Extrude distance <output id="distanceValue">0.50</output><input id="distance" type="range" min="0.1" max="2" step="0.1" value="0.5"></label>
+        <p id="selection">Face 1 selected</p>
+        <label>Operation amount <output id="distanceValue">0.50</output><input id="distance" type="range" min="0.05" max="2" step="0.05" value="0.5"></label>
         <button class="primary" id="extrude">Extrude selected face</button>
         <h2>History</h2>
         <ol id="history">

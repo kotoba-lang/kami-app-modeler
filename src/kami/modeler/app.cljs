@@ -1,11 +1,9 @@
 (ns kami.modeler.app
-  (:require [kami.modeling :as modeling]
+  (:require [cljs.reader :as reader]
+            [kami.modeling :as modeling]
             [kami.webgpu.mesh :as gpu-mesh]))
 
-(def cube
-  (modeling/mesh [[-1 -1 -1] [1 -1 -1] [1 1 -1] [-1 1 -1]
-                  [-1 -1 1] [1 -1 1] [1 1 1] [-1 1 1]]
-                 [[0 3 2 1] [4 5 6 7] [0 1 5 4] [3 7 6 2] [0 4 7 3] [1 2 6 5]]))
+(def cube (modeling/cube 2))
 
 (defonce state (atom {:mesh cube :selected-face 1 :distance 0.5 :history [cube]
                       :future [] :azimuth 0.7 :elevation 0.45 :profile :blender}))
@@ -29,10 +27,12 @@
            (gpu-mesh/upload-mesh! mesh-context (render-geometry (:mesh @state))))))
 
 (defn- update-ui! []
-  (let [{:keys [mesh distance history future profile]} @state]
+  (let [{:keys [mesh distance history future profile selected-face]} @state]
     (set! (.-textContent (.getElementById js/document "distanceValue")) (.toFixed distance 2))
     (set! (.-textContent (.getElementById js/document "meshStats"))
           (str (count (:mesh/vertices mesh)) " vertices · " (count (:mesh/faces mesh)) " faces"))
+    (set! (.-textContent (.getElementById js/document "selection"))
+          (if (some? selected-face) (str "Face " selected-face " selected") "No face selected"))
     (set! (.-innerHTML (.getElementById js/document "history"))
           (apply str (map-indexed (fn [i _] (str "<li>" (if (zero? i) "Create cube" "Extrude face") "</li>")) history)))
     (set! (.-disabled (.getElementById js/document "undo")) (= 1 (count history)))
@@ -51,6 +51,10 @@
         next-selected-face (dec (count (:mesh/faces mesh)))]
     (swap! state assoc :selected-face next-selected-face)
     (commit-mesh! (modeling/extrude-face mesh selected-face [0 0 distance]))))
+(defn- inset! [] (let [{:keys [mesh selected-face distance]} @state] (when (some? selected-face) (commit-mesh! (modeling/inset-face mesh selected-face (max 0.05 (min 0.95 distance)))))))
+(defn- scale! [] (let [{:keys [mesh selected-face distance]} @state] (when (some? selected-face) (commit-mesh! (modeling/scale-face mesh selected-face distance)))))
+(defn- move! [] (let [{:keys [mesh selected-face distance]} @state] (when (some? selected-face) (commit-mesh! (modeling/translate-face mesh selected-face [0 0 distance])))))
+(defn- delete! [] (let [{:keys [mesh selected-face]} @state] (when (and (some? selected-face) (> (count (:mesh/faces mesh)) 1)) (commit-mesh! (modeling/delete-face mesh selected-face)) (swap! state assoc :selected-face 0) (update-ui!))))
 (defn- undo! [] (when (> (count (:history @state)) 1) (swap! state (fn [s] (let [h (:history s) current (peek h) h' (pop h)] (assoc s :history h' :mesh (peek h') :future (conj (:future s) current))))) (refresh-mesh!) (update-ui!)))
 (defn- redo! [] (when-let [m (peek (:future @state))] (swap! state (fn [s] (assoc s :mesh m :history (conj (:history s) m) :future (pop (:future s))))) (refresh-mesh!) (update-ui!)))
 
@@ -77,14 +81,31 @@
                 (set! (.-textContent (.getElementById js/document "gpu-status"))
                       (str "WebGPU unavailable: " e))))))
 
+(defn- normalize [v] (let [l (max 1.0e-9 (js/Math.hypot (nth v 0) (nth v 1) (nth v 2)))] (mapv #(/ % l) v)))
+(defn- add3 [& vs] (apply mapv + vs))
+(defn- mul3 [v s] (mapv #(* % s) v))
+(defn- camera-eye [] (let [{:keys [azimuth elevation]} @state d 6] [(* d (js/Math.cos elevation) (js/Math.cos azimuth)) (* d (js/Math.sin elevation)) (* d (js/Math.cos elevation) (js/Math.sin azimuth))]))
+(defn- pick-at! [canvas event]
+  (let [r (.getBoundingClientRect canvas) x (- (* 2 (/ (- (.-clientX event) (.-left r)) (.-width r))) 1)
+        y (- 1 (* 2 (/ (- (.-clientY event) (.-top r)) (.-height r)))) eye (camera-eye)
+        f (normalize (mapv - [0 0 0] eye)) right (normalize (cross f [0 1 0])) up (cross right f)
+        tan (js/Math.tan (/ js/Math.PI 6)) dir (normalize (add3 f (mul3 right (* x (/ (.-width r) (.-height r)) tan)) (mul3 up (* y tan))))
+        face (modeling/pick-face (:mesh @state) eye dir)]
+    (when (some? face) (swap! state assoc :selected-face face) (update-ui!))))
+
 (defn ^:export init! []
   (let [canvas (.getElementById js/document "gpu-canvas") drag (atom nil)]
     (.addEventListener (.getElementById js/document "extrude") "click" extrude!)
+    (.addEventListener (.getElementById js/document "inset") "click" inset!)
+    (.addEventListener (.getElementById js/document "scale") "click" scale!)
+    (.addEventListener (.getElementById js/document "move") "click" move!)
+    (.addEventListener (.getElementById js/document "delete") "click" delete!)
     (.addEventListener (.getElementById js/document "undo") "click" undo!)
     (.addEventListener (.getElementById js/document "redo") "click" redo!)
     (.addEventListener (.getElementById js/document "distance") "input" #(swap! state assoc :distance (js/parseFloat (.. % -target -value))))
     (.addEventListener (.getElementById js/document "profile") "change" #(do (swap! state assoc :profile (keyword (.. % -target -value))) (update-ui!)))
-    (.addEventListener canvas "pointerdown" #(reset! drag [(.-clientX %) (.-clientY %)]))
+    (.addEventListener canvas "contextmenu" #(.preventDefault %))
+    (.addEventListener canvas "pointerdown" #(if (or (= 1 (.-button %)) (.-altKey %)) (reset! drag [(.-clientX %) (.-clientY %)]) (pick-at! canvas %)))
     (.addEventListener js/window "pointerup" #(reset! drag nil))
     (.addEventListener js/window "pointermove"
       (fn [event]
@@ -94,6 +115,18 @@
                  (fn [e] (max -1.3 (min 1.3 (+ e (* 0.008 (- (.-clientY event) y)))))))
           (reset! drag [(.-clientX event) (.-clientY event)]))))
     (.addEventListener js/window "keydown" #(cond (and (.-ctrlKey %) (= "z" (.toLowerCase (.-key %)))) (undo!) (= "e" (.toLowerCase (.-key %))) (extrude!)))
+    (.addEventListener (.getElementById js/document "new-cube") "click" #(do (reset! state {:mesh cube :selected-face 1 :distance 0.5 :history [cube] :future [] :azimuth 0.7 :elevation 0.45 :profile :blender}) (refresh-mesh!) (update-ui!)))
+    (.addEventListener (.getElementById js/document "import") "click" #(.click (.getElementById js/document "import-file")))
+    (.addEventListener (.getElementById js/document "import-file") "change"
+                       (fn [event]
+                         (when-let [file (aget (.. event -target -files) 0)]
+                           (-> (.text file)
+                               (.then (fn [text]
+                                        (let [m (reader/read-string text)]
+                                          (when (modeling/valid-mesh? m)
+                                            (swap! state assoc :mesh m :history [m] :future [] :selected-face 0)
+                                            (refresh-mesh!)
+                                            (update-ui!)))))))))
     (.addEventListener (.getElementById js/document "export") "click" #(let [a (.createElement js/document "a") data (pr-str (:mesh @state))] (set! (.-href a) (.createObjectURL js/URL (js/Blob. #js [data] #js {:type "application/edn"}))) (set! (.-download a) "model.edn") (.click a)))
     (update-ui!)
     (init-gpu! canvas)))
