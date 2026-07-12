@@ -37,20 +37,40 @@
     [(/ (bit-and (bit-shift-right n 16) 255) 255)
      (/ (bit-and (bit-shift-right n 8) 255) 255)
      (/ (bit-and n 255) 255) 1.0]))
-(declare commit-scene! apply-project!)
+(declare commit-scene! apply-project! base64->buffer refresh-mesh! update-ui!)
+
+(defn- texture-payload [data-uri]
+  (let [mime-type (subs data-uri 5 (.indexOf data-uri ";"))
+        bytes (js/Uint8Array. (base64->buffer data-uri))]
+    {:mime-type mime-type :bytes (vec (array-seq bytes))}))
 
 (defn- refresh-mesh! []
   (let [combined (modeling/scene-mesh (:scene @state))]
   (set! (.-__kami_modeler_mesh js/window) (clj->js combined))
-  (when-let [{:keys [mesh-context]} @runtime]
+  (when-let [{:keys [mesh-context texture-cache]} @runtime]
     (swap! runtime assoc :draws
            (mapv (fn [{:object/keys [id material mesh]}]
+                   (let [data-uri (:material/base-color-texture material)
+                         texture (get texture-cache data-uri)]
                    {:object-id id
                     :color (subvec (vec (:material/base-color material)) 0 3)
                     :material {:metallic (:material/metallic material)
-                               :roughness (:material/roughness material)}
-                    :buffers (gpu-mesh/upload-mesh! mesh-context (render-geometry mesh))})
-                 (modeling/scene-renderables (:scene @state)))))))
+                               :roughness (:material/roughness material)
+                               :texture (when-not (= :loading texture) texture)}
+                    :buffers (gpu-mesh/upload-mesh! mesh-context (render-geometry mesh))}))
+                 (modeling/scene-renderables (:scene @state))))
+    (doseq [{:object/keys [material]} (modeling/scene-renderables (:scene @state))
+            :let [data-uri (:material/base-color-texture material)]
+            :when (and data-uri (not (contains? texture-cache data-uri)) (:device mesh-context))]
+      (swap! runtime assoc-in [:texture-cache data-uri] :loading)
+      (-> (gpu-mesh/upload-texture! mesh-context (texture-payload data-uri))
+          (.then (fn [texture]
+                   (swap! runtime assoc-in [:texture-cache data-uri] texture)
+                   (set! (.-textContent (.getElementById js/document "texture-status")) "Texture loaded")
+                   (refresh-mesh!) (update-ui!)))
+          (.catch (fn [error]
+                    (swap! runtime update :texture-cache dissoc data-uri)
+                    (set! (.-textContent (.getElementById js/document "texture-status")) (str "Texture error: " error)))))))))
 
 (defn- update-ui! []
   (let [{:keys [scene distance history future profile selected-face selected-faces selected-vertex selected-vertices selected-edge selected-edges component-mode mode save-status revision]} @state
@@ -139,6 +159,10 @@
                                        :componentMode (name component-mode) :selectedVertex selected-vertex :selectedEdge selected-edge
                                        :visible (:object/visible? object) :locked (:object/locked? object) :parent (:object/parent object)
                                        :material (:object/material object)
+                                       :textureLoaded (let [texture (get-in @runtime [:texture-cache (get-in object [:object/material :material/base-color-texture])])]
+                                                        (boolean (and texture (not= :loading texture))))
+                                       :textureCacheCount (count (:texture-cache @runtime))
+                                       :textureDevice (boolean (get-in @runtime [:mesh-context :device]))
                                        :uvCount (count (:mesh/uvs mesh))
                                        :signedVolume (modeling/signed-volume mesh)
                                        :projectVersion project/current-version :revision revision :saveStatus (name save-status)})))
@@ -203,6 +227,18 @@
     (commit-mesh! (modeling/flip-faces (selected-mesh) (:selected-faces @state)))))
 (defn- orient-outward! []
   (when (edit-mode?) (commit-mesh! (modeling/orient-outward (selected-mesh)))))
+(defn- import-texture! [event]
+  (when-let [file (aget (.. event -target -files) 0)]
+    (let [reader (js/FileReader.)]
+      (set! (.-onload reader)
+            #(let [material (assoc (:object/material (selected-object)) :material/base-color-texture (.. % -target -result))]
+               (commit-scene! (modeling/set-object-material (:scene @state) (:selected-object @state) material))
+               (set! (.-textContent (.getElementById js/document "texture-status")) (.-name file))))
+      (.readAsDataURL reader file))))
+(defn- remove-texture! []
+  (let [material (dissoc (:object/material (selected-object)) :material/base-color-texture)]
+    (commit-scene! (modeling/set-object-material (:scene @state) (:selected-object @state) material))
+    (set! (.-textContent (.getElementById js/document "texture-status")) "No texture")))
 (defn- delete-face! [] (let [{:keys [selected-face]} @state mesh (selected-mesh)] (when (and (face-edit?) (some? selected-face) (> (count (:mesh/faces mesh)) 1)) (commit-mesh! (modeling/delete-face mesh selected-face)) (swap! state assoc :selected-face 0 :selected-faces #{0}) (update-ui!))))
 (defn- undo! [] (when (> (count (:history @state)) 1) (swap! state (fn [s] (let [h (:history s) current (peek h) h' (pop h)] (assoc s :history h' :scene (peek h') :future (conj (:future s) current))))) (refresh-mesh!) (update-ui!)))
 (defn- redo! [] (when-let [scene (peek (:future @state))] (swap! state (fn [s] (assoc s :scene scene :history (conj (:history s) scene) :future (pop (:future s))))) (refresh-mesh!) (update-ui!)))
@@ -461,7 +497,7 @@
 (defn- init-gpu! [canvas]
   (-> (gpu-mesh/init-canvas! canvas)
       (.then (fn [viewport]
-               (reset! runtime viewport)
+               (reset! runtime (assoc viewport :texture-cache {}))
                (refresh-mesh!)
                (set! (.-textContent (.getElementById js/document "gpu-status")) "")
                (set! (.-__kami_modeler_ready js/window) true)
@@ -508,6 +544,8 @@
     (.addEventListener (.getElementById js/document "knife") "click" knife!)
     (.addEventListener (.getElementById js/document "flip-normals") "click" flip-normals!)
     (.addEventListener (.getElementById js/document "orient-outward") "click" orient-outward!)
+    (.addEventListener (.getElementById js/document "texture-file") "change" import-texture!)
+    (.addEventListener (.getElementById js/document "remove-texture") "click" remove-texture!)
     (.addEventListener (.getElementById js/document "bridge") "click" bridge!)
     (.addEventListener (.getElementById js/document "select-all-faces") "click" select-all-components!)
     (.addEventListener (.getElementById js/document "snap-selection") "click" snap-selection!)

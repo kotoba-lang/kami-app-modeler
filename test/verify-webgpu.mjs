@@ -89,8 +89,15 @@ if (JSON.stringify(faceAfterFlip) !== JSON.stringify([...faceBeforeFlip].reverse
 await page.click("#orient-outward");
 const outwardVolume = await page.evaluate(() => JSON.parse(document.querySelector("#debug-state").textContent).signedVolume);
 if (!(outwardVolume > 0)) throw new Error(`Orient Outward did not restore positive signed volume: ${outwardVolume}`);
+await page.click("#unwrap-uv");
+const generatedTexture = await page.evaluate(() => { const canvas = document.createElement("canvas"); canvas.width = 2; canvas.height = 2; const context = canvas.getContext("2d"); context.fillStyle = "#ff3366"; context.fillRect(0, 0, 1, 2); context.fillStyle = "#33ccff"; context.fillRect(1, 0, 1, 2); return canvas.toDataURL("image/png"); });
+const png = Buffer.from(generatedTexture.split(",")[1], "base64");
+await page.locator("#texture-file").setInputFiles({name: "pixel.png", mimeType: "image/png", buffer: png});
+await page.waitForFunction(() => JSON.parse(document.querySelector("#debug-state").textContent).textureLoaded === true, null, {timeout: 10000});
+const textureState = await page.evaluate(() => { const state = JSON.parse(document.querySelector("#debug-state").textContent); return {loaded: state.textureLoaded, uvCount: state.uvCount, dataUri: state.material["base-color-texture"], cacheCount: state.textureCacheCount, device: state.textureDevice}; });
+if (!(textureState.loaded && textureState.uvCount === knife.vertices && textureState.dataUri.startsWith("data:image/png;base64,"))) throw new Error(`Texture material was not uploaded and persisted: ${JSON.stringify({textureState, status: await page.locator("#texture-status").textContent(), errors})}`);
 if (errors.length) throw new Error(`Browser errors: ${errors.join("\n")}`);
 await page.screenshot({path: "test/modeler-webgpu.png"});
 await browser.close();
 await new Promise(resolve => server.close(resolve));
-console.log(JSON.stringify({before, selection, after, inset, bevel, loopCut, knife, multiSelection, batchMove: {beforeBatchMove, afterBatchMove}, snappedVertex, vertexSelection, vertexMove: {beforeVertexMove, afterVertexMove}, axisMove: {beforeAxisMove, afterAxisMove}, normals: {faceBeforeFlip, faceAfterFlip, outwardVolume}, webgpu: true}));
+console.log(JSON.stringify({before, selection, after, inset, bevel, loopCut, knife, multiSelection, batchMove: {beforeBatchMove, afterBatchMove}, snappedVertex, vertexSelection, vertexMove: {beforeVertexMove, afterVertexMove}, axisMove: {beforeAxisMove, afterAxisMove}, normals: {faceBeforeFlip, faceAfterFlip, outwardVolume}, textureState, webgpu: true}));
