@@ -134,6 +134,16 @@
                                           (remove #(= (:object/id %) selected-id) (:scene/objects scene))))]
           (let [option (.createElement js/document "option")] (set! (.-value option) value) (set! (.-textContent option) label) (.appendChild parent-select option)))
         (set! (.-value parent-select) (str (or (:object/parent object) ""))))
+      (let [target-select (.getElementById js/document "boolean-target")
+            targets (remove #(= (:object/id %) selected-id) (:scene/objects scene))]
+        (set! (.-innerHTML target-select) "")
+        (doseq [target targets]
+          (let [option (.createElement js/document "option")]
+            (set! (.-value option) (:object/id target))
+            (set! (.-textContent option) (:object/name target))
+            (.appendChild target-select option)))
+        (doseq [id ["boolean-union" "boolean-intersection" "boolean-difference"]]
+          (set! (.-disabled (.getElementById js/document id)) (empty? targets))))
       (doseq [id ["object-name" "tx" "ty" "tz" "object-parent" "apply-transform" "add-mirror" "add-subdivision" "add-array" "delete-object"]]
         (set! (.-disabled (.getElementById js/document id)) (:object/locked? object)))
       (let [stack (.getElementById js/document "modifier-stack")]
@@ -247,6 +257,22 @@
                  :scale [(input-number "uv-scale-u") (input-number "uv-scale-v")]
                  :rotation (* (/ js/Math.PI 180) (input-number "uv-rotation"))}]
     (when (seq indices) (commit-mesh! (modeling/transform-uvs (selected-mesh) indices options)))))
+(defn- boolean-objects! [operation]
+  (let [scene (:scene @state) source-id (:selected-object @state)
+        target-id (js/parseInt (.-value (.getElementById js/document "boolean-target")))
+        renderables (modeling/scene-renderables scene)
+        source-mesh (:object/mesh (first (filter #(= source-id (:object/id %)) renderables)))
+        target-mesh (:object/mesh (first (filter #(= target-id (:object/id %)) renderables)))]
+    (when (and source-mesh target-mesh)
+      (let [result (modeling/boolean-mesh source-mesh target-mesh operation)
+            updated (-> scene
+                        (modeling/update-object source-id
+                                                (fn [object] (assoc object :object/mesh result :object/modifiers []
+                                                                    :object/parent nil :object/translation [0 0 0]
+                                                                    :object/rotation [0 0 0] :object/scale [1 1 1])))
+                        (modeling/delete-object target-id))]
+        (swap! state assoc :selected-face 0 :selected-faces #{0})
+        (commit-scene! updated)))))
 (defn- delete-face! [] (let [{:keys [selected-face]} @state mesh (selected-mesh)] (when (and (face-edit?) (some? selected-face) (> (count (:mesh/faces mesh)) 1)) (commit-mesh! (modeling/delete-face mesh selected-face)) (swap! state assoc :selected-face 0 :selected-faces #{0}) (update-ui!))))
 (defn- undo! [] (when (> (count (:history @state)) 1) (swap! state (fn [s] (let [h (:history s) current (peek h) h' (pop h)] (assoc s :history h' :scene (peek h') :future (conj (:future s) current))))) (refresh-mesh!) (update-ui!)))
 (defn- redo! [] (when-let [scene (peek (:future @state))] (swap! state (fn [s] (assoc s :scene scene :history (conj (:history s) scene) :future (pop (:future s))))) (refresh-mesh!) (update-ui!)))
@@ -555,6 +581,8 @@
     (.addEventListener (.getElementById js/document "texture-file") "change" import-texture!)
     (.addEventListener (.getElementById js/document "remove-texture") "click" remove-texture!)
     (.addEventListener (.getElementById js/document "transform-uv") "click" transform-uv-selection!)
+    (doseq [[id operation] [["boolean-union" :union] ["boolean-intersection" :intersection] ["boolean-difference" :difference]]]
+      (.addEventListener (.getElementById js/document id) "click" #(boolean-objects! operation)))
     (.addEventListener (.getElementById js/document "bridge") "click" bridge!)
     (.addEventListener (.getElementById js/document "select-all-faces") "click" select-all-components!)
     (.addEventListener (.getElementById js/document "snap-selection") "click" snap-selection!)
