@@ -63,8 +63,13 @@ const beforeBatchMove = await page.evaluate(() => window.__kami_modeler_mesh.ver
 await page.click("#move");
 const afterBatchMove = await page.evaluate(() => window.__kami_modeler_mesh.vertices?.[0] ?? window.__kami_modeler_mesh["mesh/vertices"]?.[0]);
 if (!(afterBatchMove[2] > beforeBatchMove[2])) throw new Error(`Batch move did not transform the selected face union once: ${JSON.stringify({beforeBatchMove, afterBatchMove})}`);
+await page.fill("#snap-increment", "0.3");
+await page.locator("#snap-increment").dispatchEvent("change");
+await page.click("#snap-selection");
+const snappedVertex = await page.evaluate(() => window.__kami_modeler_mesh.vertices?.[0] ?? window.__kami_modeler_mesh["mesh/vertices"]?.[0]);
+if (!snappedVertex.every(value => Math.abs(value / 0.3 - Math.round(value / 0.3)) < 1e-8)) throw new Error(`Grid snap did not quantize the selected vertex union: ${JSON.stringify(snappedVertex)}`);
 if (errors.length) throw new Error(`Browser errors: ${errors.join("\n")}`);
 await page.screenshot({path: "test/modeler-webgpu.png"});
 await browser.close();
 await new Promise(resolve => server.close(resolve));
-console.log(JSON.stringify({before, selection, after, inset, bevel, loopCut, knife, multiSelection, batchMove: {beforeBatchMove, afterBatchMove}, webgpu: true}));
+console.log(JSON.stringify({before, selection, after, inset, bevel, loopCut, knife, multiSelection, batchMove: {beforeBatchMove, afterBatchMove}, snappedVertex, webgpu: true}));

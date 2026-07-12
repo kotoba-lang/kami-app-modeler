@@ -8,7 +8,7 @@
 (def cube (modeling/cube 2))
 (def initial-scene (modeling/scene [(modeling/object 1 "Cube" cube)]))
 
-(defonce state (atom {:scene initial-scene :selected-object 1 :next-id 2 :selected-face 1 :selected-faces #{1} :distance 0.5
+(defonce state (atom {:scene initial-scene :selected-object 1 :next-id 2 :selected-face 1 :selected-faces #{1} :distance 0.5 :snap 0.25
                       :component-mode :face :selected-vertex nil :selected-edge nil
                       :history [initial-scene] :future [] :azimuth 0.7 :elevation 0.45
                       :mode :edit :profile :blender :project-id "untitled-model"
@@ -209,6 +209,16 @@
     (let [selected (set (range (count (:mesh/faces (selected-mesh)))))]
       (swap! state assoc :selected-faces selected :selected-face (first selected))
       (update-ui!))))
+(defn- selected-vertex-set []
+  (let [{:keys [component-mode selected-vertex selected-edge selected-faces]} @state]
+    (case component-mode
+      :vertex (if (some? selected-vertex) #{selected-vertex} #{})
+      :edge (set selected-edge)
+      :face (if (seq selected-faces) (set (modeling/selected-vertex-indices (selected-mesh) selected-faces)) #{})
+      #{})))
+(defn- snap-selection! []
+  (let [indices (selected-vertex-set) increment (:snap @state)]
+    (when (seq indices) (commit-mesh! (modeling/snap-vertices (selected-mesh) indices increment)))))
 
 (defn- editable-target? [event]
   (let [target (.-target event) tag (some-> target .-tagName .toLowerCase)]
@@ -242,12 +252,12 @@
 
 (defn- project-document []
   (let [{:keys [project-id project-name scene selected-object selected-face selected-faces selected-vertex selected-edge component-mode mode
-                azimuth elevation profile]} @state]
+                azimuth elevation profile snap]} @state]
     (project/document {:id project-id :name project-name :scene scene
                        :selection {:object-id selected-object :face-id selected-face :face-ids selected-faces :vertex-id selected-vertex
                                    :edge selected-edge :component-mode component-mode :mode mode}
                        :camera {:azimuth azimuth :elevation elevation}
-                       :interaction {:profile profile}})))
+                       :interaction {:profile profile :snap snap}})))
 
 (defn- save-project! []
   (let [serialized (pr-str (project-document))
@@ -267,9 +277,10 @@
            :selected-faces (set (or (:face-ids selection) [(:face-id selection)]))
            :selected-vertex (:vertex-id selection) :selected-edge (:edge selection)
            :component-mode (:component-mode selection :face) :mode (:mode selection)
-           :azimuth (:azimuth camera) :elevation (:elevation camera)
+           :azimuth (:azimuth camera) :elevation (:elevation camera) :snap (:snap interaction 0.25)
            :profile (:profile interaction) :history [scene] :future [] :save-status :saved)
     (set! (.-value (.getElementById js/document "profile")) (name (:profile interaction)))
+    (set! (.-value (.getElementById js/document "snap-increment")) (:snap interaction 0.25))
     (refresh-mesh!) (update-ui!)))
 
 (defn- load-project! []
@@ -464,6 +475,9 @@
     (.addEventListener (.getElementById js/document "knife") "click" knife!)
     (.addEventListener (.getElementById js/document "bridge") "click" bridge!)
     (.addEventListener (.getElementById js/document "select-all-faces") "click" select-all-faces!)
+    (.addEventListener (.getElementById js/document "snap-selection") "click" snap-selection!)
+    (.addEventListener (.getElementById js/document "snap-increment") "change"
+                       #(swap! state assoc :snap (max 1.0e-6 (js/parseFloat (.. % -target -value))) :save-status :dirty))
     (.addEventListener (.getElementById js/document "scale") "click" scale!)
     (.addEventListener (.getElementById js/document "move") "click" move!)
     (.addEventListener (.getElementById js/document "delete-face") "click" delete-face!)
