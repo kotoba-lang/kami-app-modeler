@@ -52,8 +52,15 @@ await page.click("#loop-cut");
 const loopCut = await page.evaluate(() => ({vertices: window.__kami_modeler_mesh.vertices?.length ?? window.__kami_modeler_mesh["mesh/vertices"]?.length,
                                             faces: window.__kami_modeler_mesh.faces?.length ?? window.__kami_modeler_mesh["mesh/faces"]?.length}));
 if (!(loopCut.vertices === bevel.vertices + 2 && loopCut.faces === bevel.faces + 1)) throw new Error(`Loop cut did not split the selected quad: ${JSON.stringify({bevel, loopCut})}`);
+await page.click("#select-all-faces");
+const multiSelection = await page.locator("#selection").textContent();
+if (multiSelection !== `${loopCut.faces} faces selected`) throw new Error(`Select all did not create a face selection set: ${multiSelection}`);
+const beforeBatchMove = await page.evaluate(() => window.__kami_modeler_mesh.vertices?.[0] ?? window.__kami_modeler_mesh["mesh/vertices"]?.[0]);
+await page.click("#move");
+const afterBatchMove = await page.evaluate(() => window.__kami_modeler_mesh.vertices?.[0] ?? window.__kami_modeler_mesh["mesh/vertices"]?.[0]);
+if (!(afterBatchMove[2] > beforeBatchMove[2])) throw new Error(`Batch move did not transform the selected face union once: ${JSON.stringify({beforeBatchMove, afterBatchMove})}`);
 if (errors.length) throw new Error(`Browser errors: ${errors.join("\n")}`);
 await page.screenshot({path: "test/modeler-webgpu.png"});
 await browser.close();
 await new Promise(resolve => server.close(resolve));
-console.log(JSON.stringify({before, selection, after, inset, bevel, loopCut, webgpu: true}));
+console.log(JSON.stringify({before, selection, after, inset, bevel, loopCut, multiSelection, batchMove: {beforeBatchMove, afterBatchMove}, webgpu: true}));
