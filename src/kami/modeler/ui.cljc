@@ -53,4 +53,6 @@
        [:button {:id "add-catalog-modifier"} "＋ Add Modifier"] [:div {:id "modifier-stack"}]
        [:h2 "Face Inspector"] [:p {:id "selection"} "Face 1 selected"] [:label "Operation amount " [:output {:id "distanceValue"} "0.50"] [:input {:id "distance" :type "range" :min "0.05" :max "2" :step "0.05" :value "0.5"}]] [:button.primary {:id "extrude"} "Extrude selected face"] [:button {:id "undo"} "Undo"] [:button {:id "redo"} "Redo"]]]
      [:span {:id "debug-state" :style {:display "none"}}]
+     [:canvas {:id "large-scene-canvas" :aria-label "Large scene WebGPU verification canvas"
+               :style {:position "fixed" :left "-10000px" :top 0 :width "512px" :height "512px"}}]
      [:script {:src "./js/app.js"}]]]))

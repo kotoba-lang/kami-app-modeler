@@ -142,8 +142,10 @@ const stressElapsed = await page.evaluate(() => { const start = performance.now(
 await page.waitForFunction(() => JSON.parse(document.querySelector("#debug-state").textContent).objectCount === 100, null, {timeout: 20000});
 const stress = await page.evaluate(elapsedMs => { const state = JSON.parse(document.querySelector("#debug-state").textContent); return {objectCount: state.objectCount, evaluatedVertices: state.evaluatedVertices, elapsedMs}; }, stressElapsed);
 if (!(stress.objectCount === 100 && stress.elapsedMs < 10000)) throw new Error(`100-object WebGPU scene gate failed: ${JSON.stringify(stress)}`);
+const largeScene = await page.evaluate(() => window.__kami_large_scene_stress());
+if (!(largeScene.backend === "webgpu" && largeScene.instances === 10000 && largeScene.capacity >= 10000 && largeScene.geometryKinds === 1 && largeScene.drawCalls === 1)) throw new Error(`10,000-instance WebGPU gate failed: ${JSON.stringify(largeScene)}`);
 if (errors.length) throw new Error(`Browser errors: ${errors.join("\n")}`);
 await page.screenshot({path: "test/modeler-webgpu.png"});
 await browser.close();
 await new Promise(resolve => server.close(resolve));
-console.log(JSON.stringify({booleanState, boxSelection, before, selection, after, inset, bevel, loopCut, knife, multiSelection, batchMove: {beforeBatchMove, afterBatchMove}, snappedVertex, vertexSelection, vertexMove: {beforeVertexMove, afterVertexMove}, axisMove: {beforeAxisMove, afterAxisMove, afterGizmoMove}, normals: {faceBeforeFlip, faceAfterFlip, outwardVolume}, uvTransform: {uvBeforeTransform, uvAfterTransform}, textureState, modifierCatalog, recovered, stress, webgpu: true}));
+console.log(JSON.stringify({booleanState, boxSelection, before, selection, after, inset, bevel, loopCut, knife, multiSelection, batchMove: {beforeBatchMove, afterBatchMove}, snappedVertex, vertexSelection, vertexMove: {beforeVertexMove, afterVertexMove}, axisMove: {beforeAxisMove, afterAxisMove, afterGizmoMove}, normals: {faceBeforeFlip, faceAfterFlip, outwardVolume}, uvTransform: {uvBeforeTransform, uvAfterTransform}, textureState, modifierCatalog, recovered, stress, largeScene, webgpu: true}));

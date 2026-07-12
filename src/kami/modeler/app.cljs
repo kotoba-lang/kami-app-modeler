@@ -3,6 +3,8 @@
             [goog.object :as gobj]
             [kami.modeling :as modeling]
             [kami.modeler.project :as project]
+            [kami.webgpu :as instanced-gpu]
+            [kami.webgpu.ir :as render-ir]
             [kami.webgpu.mesh :as gpu-mesh]))
 
 (def cube (modeling/cube 2))
@@ -15,6 +17,28 @@
                       :project-name "Untitled Model" :revision 0 :save-status :clean}))
 (defonce runtime (atom nil))
 (defonce box-drag (atom nil))
+(defonce large-scene-context (atom nil))
+
+(defn- large-scene-stress! []
+  (let [canvas (.getElementById js/document "large-scene-canvas")
+        instances (mapv (fn [i] (render-ir/instance [(mod i 100) 0 (quot i 100)]
+                                                     [0.25 0.58 0.95] [0.75 0.75 0.75]
+                                                     :roughness 0.55)) (range 10000))
+        frame (render-ir/render-ir (render-ir/sky [0.08 0.12 0.2] [-0.4 -0.85 -0.35] [1 0.96 0.85])
+                                   instances [130 110 130] [50 0 50])
+        draw! (fn [context]
+                (let [first-start (.now js/performance)]
+                  (instanced-gpu/draw! context frame)
+                  (let [first-ms (- (.now js/performance) first-start) second-start (.now js/performance)]
+                    (instanced-gpu/draw! context frame)
+                    (js/Promise.resolve
+                     (clj->js {:backend (name (:backend context)) :instances (count instances)
+                               :capacity (instanced-gpu/inst-buffer-capacity context)
+                               :geometryKinds 1 :drawCalls 1 :firstMs first-ms
+                               :cachedSecondMs (- (.now js/performance) second-start)})))))]
+    (if-let [context @large-scene-context] (draw! context)
+      (-> (instanced-gpu/init! canvas)
+          (.then (fn [context] (reset! large-scene-context context) (draw! context)))))))
 
 (defn- sub3 [a b] (mapv - a b))
 (defn- cross [[ax ay az] [bx by bz]] [(- (* ay bz) (* az by)) (- (* az bx) (* ax bz)) (- (* ax by) (* ay bx))])
@@ -601,6 +625,7 @@
 
 (defn ^:export init! []
   (let [canvas (.getElementById js/document "gpu-canvas") drag (atom nil)]
+    (set! (.-__kami_large_scene_stress js/window) large-scene-stress!)
     (.addEventListener (.getElementById js/document "extrude") "click" extrude!)
     (.addEventListener (.getElementById js/document "inset") "click" inset!)
     (.addEventListener (.getElementById js/document "bevel") "click" bevel!)
