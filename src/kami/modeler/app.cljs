@@ -77,7 +77,7 @@
       (.toggle (.-classList (.getElementById js/document (str "component-" (name kind)))) "selected" (= kind component-mode)))
     (doseq [axis [:x :y :z]]
       (.toggle (.-classList (.getElementById js/document (str "axis-" (name axis)))) "selected" (= axis (:transform-axis @state))))
-    (doseq [id ["extrude" "inset" "bevel" "loop-cut" "knife" "bridge" "scale" "move" "delete-face"]]
+    (doseq [id ["extrude" "inset" "bevel" "loop-cut" "knife" "bridge" "flip-normals" "scale" "move" "delete-face"]]
       (set! (.-disabled (.getElementById js/document id)) (or (not= mode :edit) (not= component-mode :face) (:object/locked? object))))
     (set! (.-disabled (.getElementById js/document "move")) (or (not= mode :edit) (:object/locked? object)))
     (set! (.-disabled (.getElementById js/document "bridge"))
@@ -140,6 +140,7 @@
                                        :visible (:object/visible? object) :locked (:object/locked? object) :parent (:object/parent object)
                                        :material (:object/material object)
                                        :uvCount (count (:mesh/uvs mesh))
+                                       :signedVolume (modeling/signed-volume mesh)
                                        :projectVersion project/current-version :revision revision :saveStatus (name save-status)})))
     (set! (.-textContent (.getElementById js/document "project-status"))
           (str (name save-status) " · r" revision))
@@ -197,6 +198,11 @@
       (case component-mode :vertex (when (seq selected-vertices) (commit-mesh! (modeling/translate-vertices mesh selected-vertices delta)))
             :edge (when (seq selected-edges) (commit-mesh! (modeling/translate-edges mesh selected-edges delta)))
             :face (when (seq selected-faces) (commit-mesh! (modeling/translate-faces mesh selected-faces delta))) nil))))
+(defn- flip-normals! []
+  (when (and (face-edit?) (seq (:selected-faces @state)))
+    (commit-mesh! (modeling/flip-faces (selected-mesh) (:selected-faces @state)))))
+(defn- orient-outward! []
+  (when (edit-mode?) (commit-mesh! (modeling/orient-outward (selected-mesh)))))
 (defn- delete-face! [] (let [{:keys [selected-face]} @state mesh (selected-mesh)] (when (and (face-edit?) (some? selected-face) (> (count (:mesh/faces mesh)) 1)) (commit-mesh! (modeling/delete-face mesh selected-face)) (swap! state assoc :selected-face 0 :selected-faces #{0}) (update-ui!))))
 (defn- undo! [] (when (> (count (:history @state)) 1) (swap! state (fn [s] (let [h (:history s) current (peek h) h' (pop h)] (assoc s :history h' :scene (peek h') :future (conj (:future s) current))))) (refresh-mesh!) (update-ui!)))
 (defn- redo! [] (when-let [scene (peek (:future @state))] (swap! state (fn [s] (assoc s :scene scene :history (conj (:history s) scene) :future (pop (:future s))))) (refresh-mesh!) (update-ui!)))
@@ -500,6 +506,8 @@
     (.addEventListener (.getElementById js/document "bevel") "click" bevel!)
     (.addEventListener (.getElementById js/document "loop-cut") "click" loop-cut!)
     (.addEventListener (.getElementById js/document "knife") "click" knife!)
+    (.addEventListener (.getElementById js/document "flip-normals") "click" flip-normals!)
+    (.addEventListener (.getElementById js/document "orient-outward") "click" orient-outward!)
     (.addEventListener (.getElementById js/document "bridge") "click" bridge!)
     (.addEventListener (.getElementById js/document "select-all-faces") "click" select-all-components!)
     (.addEventListener (.getElementById js/document "snap-selection") "click" snap-selection!)
