@@ -71,7 +71,7 @@
     (set! (.-textContent (.getElementById js/document "tool")) (if (= mode :edit) (str (name component-mode) " Select") "Object Select"))
     (doseq [kind [:vertex :edge :face]]
       (.toggle (.-classList (.getElementById js/document (str "component-" (name kind)))) "selected" (= kind component-mode)))
-    (doseq [id ["extrude" "inset" "bevel" "loop-cut" "bridge" "scale" "move" "delete-face"]]
+    (doseq [id ["extrude" "inset" "bevel" "loop-cut" "knife" "bridge" "scale" "move" "delete-face"]]
       (set! (.-disabled (.getElementById js/document id)) (or (not= mode :edit) (not= component-mode :face) (:object/locked? object))))
     (set! (.-disabled (.getElementById js/document "move")) (or (not= mode :edit) (:object/locked? object)))
     (set! (.-disabled (.getElementById js/document "bridge"))
@@ -177,6 +177,11 @@
         (commit-mesh! (modeling/bridge-faces mesh a b))
         (swap! state assoc :selected-face 0 :selected-faces #{0})
         (update-ui!)))))
+(defn- knife! []
+  (let [{:keys [selected-face]} @state mesh (selected-mesh)
+        edge-count (count (get-in mesh [:mesh/faces selected-face]))]
+    (when (and (face-edit?) (some? selected-face) (>= edge-count 4))
+      (commit-mesh! (modeling/knife-face mesh selected-face 0 (quot edge-count 2) 0.5 0.5)))))
 (defn- scale! [] (let [{:keys [selected-faces distance]} @state mesh (selected-mesh)] (when (and (face-edit?) (seq selected-faces)) (commit-mesh! (modeling/scale-faces mesh selected-faces distance)))))
 (defn- move! []
   (let [{:keys [component-mode selected-faces selected-vertex selected-edge distance]} @state mesh (selected-mesh) delta [0 0 distance]]
@@ -219,14 +224,14 @@
       (= key "tab") :toggle-mode
       (and (= (:component-mode @state) :face) (= key "a")) :select-all-faces
       (= key "1") :vertex-mode (= key "2") :edge-mode (= key "3") :face-mode
-      (= profile :blender) ({"e" :extrude "i" :inset "b" :bevel "g" :move "s" :scale "x" :delete-face} key)
+      (= profile :blender) ({"e" :extrude "i" :inset "b" :bevel "k" :knife "g" :move "s" :scale "x" :delete-face} key)
       (= profile :maya) (cond (and ctrl (= key "e")) :extrude (and ctrl (= key "d")) :duplicate-object
                               (= key "w") :move (= key "r") :scale (= key "delete") :delete-face)
       (= profile :max) (cond (and alt (= key "e")) :extrude (and ctrl (= key "v")) :duplicate-object
                              (= key "w") :move (= key "r") :scale (= key "delete") :delete-face)
       (= profile :c4d) ({"d" :extrude "i" :inset "e" :move "t" :scale "backspace" :delete-face} key))))
 (defn- execute-command! [command]
-  (case command :extrude (extrude!) :inset (inset!) :bevel (bevel!) :loop-cut (loop-cut!) :bridge (bridge!) :move (move!) :scale (scale!)
+  (case command :extrude (extrude!) :inset (inset!) :bevel (bevel!) :loop-cut (loop-cut!) :knife (knife!) :bridge (bridge!) :move (move!) :scale (scale!)
         :delete-face (delete-face!) :duplicate-object (duplicate-object!) :undo (undo!) :redo (redo!)
         :toggle-mode (toggle-mode!) :vertex-mode (set-component-mode! :vertex)
         :edge-mode (set-component-mode! :edge) :face-mode (set-component-mode! :face)
@@ -456,6 +461,7 @@
     (.addEventListener (.getElementById js/document "inset") "click" inset!)
     (.addEventListener (.getElementById js/document "bevel") "click" bevel!)
     (.addEventListener (.getElementById js/document "loop-cut") "click" loop-cut!)
+    (.addEventListener (.getElementById js/document "knife") "click" knife!)
     (.addEventListener (.getElementById js/document "bridge") "click" bridge!)
     (.addEventListener (.getElementById js/document "select-all-faces") "click" select-all-faces!)
     (.addEventListener (.getElementById js/document "scale") "click" scale!)
