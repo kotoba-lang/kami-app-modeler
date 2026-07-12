@@ -21,9 +21,9 @@
 
 (defn- large-scene-stress! []
   (let [canvas (.getElementById js/document "large-scene-canvas")
-        instances (mapv (fn [i] (render-ir/instance [(mod i 100) 0 (quot i 100)]
-                                                     [0.25 0.58 0.95] [0.75 0.75 0.75]
-                                                     :roughness 0.55)) (range 10000))
+        instances (mapv (fn [i] (assoc (render-ir/instance [(mod i 200) 0 (quot i 200)]
+                                                            [0.25 0.58 0.95] [0.75 0.75 0.75]
+                                                            :roughness 0.55) :geo :sphere)) (range 20000))
         frame (render-ir/render-ir (render-ir/sky [0.08 0.12 0.2] [-0.4 -0.85 -0.35] [1 0.96 0.85])
                                    instances [130 110 130] [50 0 50])
         draw! (fn [context]
@@ -31,11 +31,20 @@
                   (instanced-gpu/draw! context frame)
                   (let [first-ms (- (.now js/performance) first-start) second-start (.now js/performance)]
                     (instanced-gpu/draw! context frame)
-                    (js/Promise.resolve
+                    (let [second-ms (- (.now js/performance) second-start)
+                          samples (mapv (fn [_] (let [start (.now js/performance)]
+                                                  (instanced-gpu/draw! context frame)
+                                                  (- (.now js/performance) start))) (range 120))
+                          ordered (vec (sort samples)) p95 (nth ordered (dec (js/Math.ceil (* 0.95 (count ordered)))))
+                          triangles-per-instance (/ (get-in context [:geos :sphere :idx-count]) 3)
+                          capacity (instanced-gpu/inst-buffer-capacity context)]
+                      (js/Promise.resolve
                      (clj->js {:backend (name (:backend context)) :instances (count instances)
-                               :capacity (instanced-gpu/inst-buffer-capacity context)
-                               :geometryKinds 1 :drawCalls 1 :firstMs first-ms
-                               :cachedSecondMs (- (.now js/performance) second-start)})))))]
+                               :capacity capacity :instanceBufferBytes (* capacity 96)
+                               :geometryKinds 1 :drawCalls 1 :trianglesPerInstance triangles-per-instance
+                               :residentTriangles (* triangles-per-instance (count instances))
+                               :firstMs first-ms :cachedSecondMs second-ms
+                               :sampleFrames (count samples) :p95SubmitMs p95 :maxSubmitMs (apply max samples)}))))))]
     (if-let [context @large-scene-context] (draw! context)
       (-> (instanced-gpu/init! canvas)
           (.then (fn [context] (reset! large-scene-context context) (draw! context)))))))

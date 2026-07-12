@@ -143,7 +143,7 @@ await page.waitForFunction(() => JSON.parse(document.querySelector("#debug-state
 const stress = await page.evaluate(elapsedMs => { const state = JSON.parse(document.querySelector("#debug-state").textContent); return {objectCount: state.objectCount, evaluatedVertices: state.evaluatedVertices, elapsedMs}; }, stressElapsed);
 if (!(stress.objectCount === 100 && stress.elapsedMs < 10000)) throw new Error(`100-object WebGPU scene gate failed: ${JSON.stringify(stress)}`);
 const largeScene = await page.evaluate(() => window.__kami_large_scene_stress());
-if (!(largeScene.backend === "webgpu" && largeScene.instances === 10000 && largeScene.capacity >= 10000 && largeScene.geometryKinds === 1 && largeScene.drawCalls === 1)) throw new Error(`10,000-instance WebGPU gate failed: ${JSON.stringify(largeScene)}`);
+if (!(largeScene.backend === "webgpu" && largeScene.instances === 20000 && largeScene.capacity >= 20000 && largeScene.geometryKinds === 1 && largeScene.drawCalls === 1 && largeScene.residentTriangles >= 10000000 && largeScene.firstMs < 3000 && largeScene.sampleFrames === 120 && largeScene.p95SubmitMs < 33.34 && largeScene.maxSubmitMs < 100 && largeScene.instanceBufferBytes < 10000000)) throw new Error(`20,000-instance / 10M-triangle WebGPU performance gate failed: ${JSON.stringify(largeScene)}`);
 if (errors.length) throw new Error(`Browser errors: ${errors.join("\n")}`);
 await page.screenshot({path: "test/modeler-webgpu.png"});
 await browser.close();
