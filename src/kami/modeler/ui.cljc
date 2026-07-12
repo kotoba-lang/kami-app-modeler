@@ -43,7 +43,14 @@
       [:aside [:h2 "Object Inspector"] [:label "Name" [:input {:id "object-name"}]] [:label "Location X" [:input {:id "tx" :type "number" :step 0.1}]] [:label "Location Y" [:input {:id "ty" :type "number" :step 0.1}]] [:label "Location Z" [:input {:id "tz" :type "number" :step 0.1}]] [:button {:id "apply-transform"} "Apply object transform"]
        [:h2 "Material"] [:label "Base Color" [:input {:id "base-color" :type "color" :value "#597fff"}]] [:label "Metallic " [:output {:id "metallic-value"} "0.00"] [:input {:id "metallic" :type "range" :min 0 :max 1 :step 0.01 :value 0}]] [:label "Roughness " [:output {:id "roughness-value"} "0.50"] [:input {:id "roughness" :type "range" :min 0 :max 1 :step 0.01 :value 0.5}]]
        [:h2 "UV Mapping"] [:label "Projection axis" [:select {:id "unwrap-axis"} [:option {:value "z"} "Z · Front"] [:option {:value "y"} "Y · Top"] [:option {:value "x"} "X · Side"]]] [:button {:id "unwrap-uv"} "Planar Unwrap"]
-       [:h2 "Modifiers"] [:button {:id "add-mirror"} "＋ Mirror X"] [:button {:id "add-subdivision"} "＋ Subdivision"] [:button {:id "add-array"} "＋ Array"] [:div {:id "modifier-stack"}]
+       [:h2 "Modifiers"] [:button {:id "add-mirror"} "＋ Mirror X"] [:button {:id "add-subdivision"} "＋ Subdivision"] [:button {:id "add-array"} "＋ Array"]
+       [:label "Catalog" [:select {:id "modifier-kind"}
+                           (for [kind ["translate" "scale" "triangulate" "flip-normals" "weld" "solidify"
+                                       "planar-unwrap" "rotate" "shear" "taper" "twist" "bend" "spherize"
+                                       "decimate" "remove-degenerate" "orient-outward" "snap-grid"
+                                       "axis-project" "center-origin" "clamp" "radial-wave" "deterministic-jitter"]]
+                             [:option {:value kind} kind])]]
+       [:button {:id "add-catalog-modifier"} "＋ Add Modifier"] [:div {:id "modifier-stack"}]
        [:h2 "Face Inspector"] [:p {:id "selection"} "Face 1 selected"] [:label "Operation amount " [:output {:id "distanceValue"} "0.50"] [:input {:id "distance" :type "range" :min "0.05" :max "2" :step "0.05" :value "0.5"}]] [:button.primary {:id "extrude"} "Extrude selected face"] [:button {:id "undo"} "Undo"] [:button {:id "redo"} "Redo"]]]
      [:span {:id "debug-state" :style {:display "none"}}]
      [:script {:src "./js/app.js"}]]]))

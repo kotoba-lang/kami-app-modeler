@@ -27,7 +27,11 @@ page.on("pageerror", error => errors.push(error.message));
 await page.goto(process.env.MODELER_URL || baseUrl, {waitUntil: "networkidle"});
 const gpuAvailable = await page.evaluate(async () => !!navigator.gpu && !!(await navigator.gpu.requestAdapter()));
 if (!gpuAvailable) throw new Error("A real WebGPU adapter is required for this verification");
-await page.waitForFunction(() => window.__kami_modeler_ready === true, null, {timeout: 20000});
+try {
+  await page.waitForFunction(() => window.__kami_modeler_ready === true, null, {timeout: 20000});
+} catch (error) {
+  throw new Error(`Modeler readiness failed: ${error.message}; browser errors: ${errors.join(" | ")}`);
+}
 await page.click("#new-cube");
 await page.selectOption("#boolean-target", "1");
 await page.click("#boolean-union");
@@ -122,6 +126,12 @@ await page.locator("#texture-file").setInputFiles({name: "pixel.png", mimeType: 
 await page.waitForFunction(() => JSON.parse(document.querySelector("#debug-state").textContent).textureLoaded === true, null, {timeout: 10000});
 const textureState = await page.evaluate(() => { const state = JSON.parse(document.querySelector("#debug-state").textContent); return {loaded: state.textureLoaded, uvCount: state.uvCount, dataUri: state.material["base-color-texture"], cacheCount: state.textureCacheCount, device: state.textureDevice}; });
 if (!(textureState.loaded && textureState.uvCount === knife.vertices && textureState.dataUri.startsWith("data:image/png;base64,"))) throw new Error(`Texture material was not uploaded and persisted: ${JSON.stringify({textureState, status: await page.locator("#texture-status").textContent(), errors})}`);
+await page.selectOption("#modifier-kind", "twist");
+await page.click("#add-catalog-modifier");
+await page.selectOption("#modifier-kind", "remove-degenerate");
+await page.click("#add-catalog-modifier");
+const modifierCatalog = await page.evaluate(() => { const state = JSON.parse(document.querySelector("#debug-state").textContent); return {count: state.modifierCount, labels: [...document.querySelectorAll("#modifier-stack .modifier-row span")].map(node => node.textContent)}; });
+if (!(modifierCatalog.count === 2 && modifierCatalog.labels[0].startsWith("twist ") && modifierCatalog.labels[1].startsWith("remove-degenerate "))) throw new Error(`Modifier catalog did not evaluate/persist ordered modifiers: ${JSON.stringify(modifierCatalog)}`);
 await page.click("#save-project");
 await page.click("#save-project");
 await page.evaluate(() => localStorage.setItem("kami.modeler.project.v2", "{:corrupt"));
@@ -136,4 +146,4 @@ if (errors.length) throw new Error(`Browser errors: ${errors.join("\n")}`);
 await page.screenshot({path: "test/modeler-webgpu.png"});
 await browser.close();
 await new Promise(resolve => server.close(resolve));
-console.log(JSON.stringify({booleanState, boxSelection, before, selection, after, inset, bevel, loopCut, knife, multiSelection, batchMove: {beforeBatchMove, afterBatchMove}, snappedVertex, vertexSelection, vertexMove: {beforeVertexMove, afterVertexMove}, axisMove: {beforeAxisMove, afterAxisMove, afterGizmoMove}, normals: {faceBeforeFlip, faceAfterFlip, outwardVolume}, uvTransform: {uvBeforeTransform, uvAfterTransform}, textureState, recovered, stress, webgpu: true}));
+console.log(JSON.stringify({booleanState, boxSelection, before, selection, after, inset, bevel, loopCut, knife, multiSelection, batchMove: {beforeBatchMove, afterBatchMove}, snappedVertex, vertexSelection, vertexMove: {beforeVertexMove, afterVertexMove}, axisMove: {beforeAxisMove, afterAxisMove, afterGizmoMove}, normals: {faceBeforeFlip, faceAfterFlip, outwardVolume}, uvTransform: {uvBeforeTransform, uvAfterTransform}, textureState, modifierCatalog, recovered, stress, webgpu: true}));

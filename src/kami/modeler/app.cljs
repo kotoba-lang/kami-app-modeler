@@ -146,7 +146,7 @@
             (.appendChild target-select option)))
         (doseq [id ["boolean-union" "boolean-intersection" "boolean-difference"]]
           (set! (.-disabled (.getElementById js/document id)) (empty? targets))))
-      (doseq [id ["object-name" "tx" "ty" "tz" "object-parent" "apply-transform" "add-mirror" "add-subdivision" "add-array" "delete-object"]]
+      (doseq [id ["object-name" "tx" "ty" "tz" "object-parent" "apply-transform" "add-mirror" "add-subdivision" "add-array" "modifier-kind" "add-catalog-modifier" "delete-object"]]
         (set! (.-disabled (.getElementById js/document id)) (:object/locked? object)))
       (let [stack (.getElementById js/document "modifier-stack")]
         (set! (.-innerHTML stack) "")
@@ -690,6 +690,22 @@
       (.addEventListener (.getElementById js/document id) "click"
                          #(commit-scene! (modeling/update-object (:scene @state) (:selected-object @state)
                                                                   modeling/add-modifier (modeling/modifier kind options)))))
+    (let [presets {:translate {:offset [0.25 0 0]} :scale {:factors [1.1 1.1 1.1]}
+                   :triangulate {} :flip-normals {} :weld {:tolerance 0.001}
+                   :solidify {:thickness 0.1} :planar-unwrap {:axis :z}
+                   :rotate {:angles [0 0 0.25]} :shear {:xy 0.1 :xz 0 :yx 0 :yz 0 :zx 0 :zy 0}
+                   :taper {:axis :z :factor 0.1} :twist {:axis :z :factor 0.25}
+                   :bend {:axis :x :factor 0.1} :spherize {:factor 0.5 :radius 2}
+                   :decimate {:ratio 0.75} :remove-degenerate {:epsilon 1.0e-9}
+                   :orient-outward {} :snap-grid {:size 0.1} :axis-project {:axis :z :value 0}
+                   :center-origin {} :clamp {:min [-2 -2 -2] :max [2 2 2]}
+                   :radial-wave {:amplitude 0.1 :frequency 2}
+                   :deterministic-jitter {:amplitude 0.01 :seed 42}}]
+      (.addEventListener (.getElementById js/document "add-catalog-modifier") "click"
+                         #(let [kind (keyword (.-value (.getElementById js/document "modifier-kind")))]
+                            (commit-scene! (modeling/update-object (:scene @state) (:selected-object @state)
+                                                                   modeling/add-modifier
+                                                                   (modeling/modifier kind (get presets kind)))))))
     (.addEventListener (.getElementById js/document "unwrap-uv") "click"
                        #(let [axis (keyword (.-value (.getElementById js/document "unwrap-axis")))]
                           (commit-mesh! (modeling/planar-unwrap (selected-mesh) axis))))
