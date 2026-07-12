@@ -3,8 +3,24 @@ on: [push, pull_request]
 jobs:
   clojure-quality:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: kami-app-modeler
     steps:
       - uses: actions/checkout@v4
+        with: {path: kami-app-modeler}
+      - uses: actions/checkout@v4
+        with: {repository: kotoba-lang/html, path: html}
+      - uses: actions/checkout@v4
+        with: {repository: kotoba-lang/css, path: css}
+      - uses: actions/checkout@v4
+        with: {repository: kotoba-lang/kami-engine-modeling, path: kami-engine-modeling}
+      - uses: actions/checkout@v4
+        with: {repository: kotoba-lang/webgpu, path: webgpu}
+      - uses: actions/checkout@v4
+        with: {repository: kotoba-lang/org-w3-webgpu, path: org-w3-webgpu}
+      - uses: actions/checkout@v4
+        with: {repository: kotoba-lang/expr, path: expr}
       - uses: DeLaGuardo/setup-clojure@13.2
         with:
           cli: latest
