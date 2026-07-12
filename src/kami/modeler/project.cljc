@@ -47,14 +47,27 @@
     :else (throw (ex-info "Not a Modeler project or scene" {:value value}))))
 
 (defn valid? [project]
-  (and (= :modeler-project (:kami/document project))
+  (let [objects (get-in project [:project/scene :scene/objects])
+        ids (map :object/id objects)
+        selected-id (get-in project [:project/selection :object-id])]
+    (and (= :modeler-project (:kami/document project))
        (= current-version (:kami/version project))
        (string? (:project/id project))
+       (not-empty (:project/id project))
        (string? (:project/name project))
-       (seq (get-in project [:project/scene :scene/objects]))
+       (not-empty (:project/name project))
+       (vector? objects)
+       (seq objects)
+       (every? #(and (integer? (:object/id %))
+                     (string? (:object/name %))
+                     (map? (:object/mesh %))) objects)
+       (= (count ids) (count (distinct ids)))
+       (or (nil? selected-id) (some #{selected-id} ids))
        (map? (:project/selection project))
        (map? (:project/camera project))
-       (map? (:project/interaction project))))
+       (number? (get-in project [:project/camera :azimuth]))
+       (number? (get-in project [:project/camera :elevation]))
+       (map? (:project/interaction project)))))
 
 (defn open [value]
   (let [project (migrate value)]

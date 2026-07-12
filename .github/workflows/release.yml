@@ -1,0 +1,21 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm}
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run verify:webgl2
+      - run: tar -czf kami-app-modeler-${GITHUB_REF_NAME}.tar.gz public README.md LICENSE docs
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: kami-app-modeler-${{ github.ref_name }}.tar.gz

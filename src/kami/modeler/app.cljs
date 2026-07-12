@@ -18,6 +18,40 @@
 (defonce runtime (atom nil))
 (defonce box-drag (atom nil))
 (defonce large-scene-context (atom nil))
+(defonce autosave-timer (atom nil))
+
+(defn- report-error! [context error]
+  (let [banner (or (.getElementById js/document "error-banner")
+                   (let [node (.createElement js/document "div")]
+                     (set! (.-id node) "error-banner")
+                     (.setAttribute node "role" "alert")
+                     (set! (.-cssText (.-style node)) "position:fixed;z-index:1000;left:16px;right:16px;top:64px;padding:12px 16px;border:1px solid #ff6b6b;border-radius:8px;background:#401b2bcc;color:#fff")
+                     (.appendChild (.-body js/document) node)
+                     node))]
+    (set! (.-textContent banner) (str context ": " (or (.-message error) error)))
+    (js/setTimeout #(when (.-isConnected banner) (.remove banner)) 8000)))
+
+(defn- percentile-95 [values]
+  (let [ordered (vec (sort values))]
+    (nth ordered (dec (js/Math.ceil (* 0.95 (count ordered)))))))
+
+(defn- measure-animation-frames! [draw-frame!]
+  (js/Promise.
+   (fn [resolve _]
+     (let [samples (atom []) submits (atom []) previous (atom nil) remaining (atom 120)
+           tick (fn tick [timestamp]
+                  (when-let [last @previous] (swap! samples conj (- timestamp last)))
+                  (reset! previous timestamp)
+                  (let [start (.now js/performance)]
+                    (draw-frame!)
+                    (swap! submits conj (- (.now js/performance) start)))
+                  (if (pos? (swap! remaining dec))
+                    (js/requestAnimationFrame tick)
+                    (resolve {:rafFrames (count @samples) :p95FrameMs (percentile-95 @samples)
+                              :maxFrameMs (apply max @samples)
+                              :sampleFrames (count @submits) :p95SubmitMs (percentile-95 @submits)
+                              :maxSubmitMs (apply max @submits)})))]
+       (js/requestAnimationFrame tick)))))
 
 (defn- large-scene-stress! []
   (let [canvas (.getElementById js/document "large-scene-canvas")
@@ -26,32 +60,41 @@
                                                             :roughness 0.55) :geo :sphere)) (range 20000))
         frame (render-ir/render-ir (render-ir/sky [0.08 0.12 0.2] [-0.4 -0.85 -0.35] [1 0.96 0.85])
                                    instances [130 110 130] [50 0 50])
-        draw! (fn [context]
-                (let [first-start (.now js/performance)]
-                  (instanced-gpu/draw! context frame)
-                  (let [first-ms (- (.now js/performance) first-start) second-start (.now js/performance)]
-                    (instanced-gpu/draw! context frame)
-                    (let [second-ms (- (.now js/performance) second-start)
-                          samples (mapv (fn [_] (let [start (.now js/performance)]
-                                                  (instanced-gpu/draw! context frame)
-                                                  (- (.now js/performance) start))) (range 120))
-                          ordered (vec (sort samples)) p95 (nth ordered (dec (js/Math.ceil (* 0.95 (count ordered)))))
-                          triangles-per-instance (/ (or (get-in context [:geos :sphere :idx-count])
-                                                        (get-in context [:geos :sphere :index-count])) 3)
-                          capacity (if (= :webgpu (:backend context))
-                                     (instanced-gpu/inst-buffer-capacity context)
-                                     (count instances))]
-                      (js/Promise.resolve
-                     (clj->js {:backend (name (:backend context)) :instances (count instances)
+        measure! (fn [context]
+                   (let [long-tasks (atom [])
+                         observer (when (exists? js/PerformanceObserver)
+                                    (let [o (js/PerformanceObserver.
+                                             (fn [list]
+                                               (doseq [entry (array-seq (.getEntries list))]
+                                                 (swap! long-tasks conj (.-duration entry)))))]
+                                      (try (.observe o #js {:type "longtask" :buffered true})
+                                           (catch :default _ nil)) o))
+                         first-start (.now js/performance)
+                         _ (instanced-gpu/draw! context frame)
+                         first-ms (- (.now js/performance) first-start)
+                         second-start (.now js/performance)
+                         _ (instanced-gpu/draw! context frame)
+                         second-ms (- (.now js/performance) second-start)
+                         triangles (/ (or (get-in context [:geos :sphere :idx-count])
+                                          (get-in context [:geos :sphere :index-count])) 3)
+                         capacity (if (= :webgpu (:backend context))
+                                    (instanced-gpu/inst-buffer-capacity context) (count instances))
+                         base {:backend (name (:backend context)) :instances (count instances)
                                :capacity capacity :instanceBufferBytes (* capacity 96)
-                               :geometryKinds 1 :drawCalls 1 :trianglesPerInstance triangles-per-instance
-                               :residentTriangles (* triangles-per-instance (count instances))
+                               :geometryKinds 1 :drawCalls 1 :trianglesPerInstance triangles
+                               :residentTriangles (* triangles (count instances))
                                :pickingIds [1 10000 20000] :provenanceRevision "modeler-large-scene-v1"
-                               :firstMs first-ms :cachedSecondMs second-ms
-                               :sampleFrames (count samples) :p95SubmitMs p95 :maxSubmitMs (apply max samples)}))))))]
-    (if-let [context @large-scene-context] (draw! context)
+                               :firstMs first-ms :cachedSecondMs second-ms}]
+                     (-> (measure-animation-frames! #(instanced-gpu/draw! context frame))
+                         (.then (fn [raf]
+                                  (when observer (.disconnect observer))
+                                  (clj->js (merge base raf
+                                                  {:longTaskCount (count @long-tasks)
+                                                   :maxLongTaskMs (apply max 0 @long-tasks)
+                                                   :usedJSHeapBytes (some-> js/performance .-memory .-usedJSHeapSize)})))))))]
+    (if-let [context @large-scene-context] (measure! context)
       (-> (instanced-gpu/init! canvas)
-          (.then (fn [context] (reset! large-scene-context context) (draw! context)))))))
+          (.then (fn [context] (reset! large-scene-context context) (measure! context)))))))
 
 (defn- sub3 [a b] (mapv - a b))
 (defn- cross [[ax ay az] [bx by bz]] [(- (* ay bz) (* az by)) (- (* az bx) (* ax bz)) (- (* ax by) (* ay bx))])
@@ -392,12 +435,18 @@
                        :interaction {:profile profile :snap snap :transform-axis transform-axis}})))
 
 (defn- save-project! []
-  (let [serialized (pr-str (project-document))
-        previous (.getItem js/localStorage storage-key)]
-    (when previous (.setItem js/localStorage backup-key previous))
-    (.setItem js/localStorage storage-key serialized)
-    (swap! state assoc :save-status :saved)
-    (update-ui!)))
+  (try
+    (let [serialized (pr-str (project-document))
+          previous (.getItem js/localStorage storage-key)]
+      (when previous (.setItem js/localStorage backup-key previous))
+      (.setItem js/localStorage storage-key serialized)
+      (swap! state assoc :save-status :saved)
+      (update-ui!))
+    (catch :default error (report-error! "Project could not be saved" error))))
+
+(defn- schedule-autosave! []
+  (when @autosave-timer (js/clearTimeout @autosave-timer))
+  (reset! autosave-timer (js/setTimeout #(do (reset! autosave-timer nil) (save-project!)) 750)))
 
 (defn- apply-project! [value]
   (let [p (project/open value) scene (:project/scene p)
@@ -638,6 +687,15 @@
 
 (defn ^:export init! []
   (let [canvas (.getElementById js/document "gpu-canvas") drag (atom nil)]
+    (add-watch state ::autosave
+               (fn [_ _ previous current]
+                 (when (and (= :dirty (:save-status current))
+                            (not= (:revision previous) (:revision current)))
+                   (schedule-autosave!))))
+    (.addEventListener js/window "error" #(report-error! "Unexpected application error" (.-error %)))
+    (.addEventListener js/window "unhandledrejection" #(report-error! "Operation failed" (.-reason %)))
+    (.addEventListener js/window "beforeunload"
+                       #(when (= :dirty (:save-status @state)) (save-project!)))
     (set! (.-__kami_large_scene_stress js/window) large-scene-stress!)
     (.addEventListener (.getElementById js/document "extrude") "click" extrude!)
     (.addEventListener (.getElementById js/document "inset") "click" inset!)
