@@ -8,7 +8,7 @@
 (def cube (modeling/cube 2))
 (def initial-scene (modeling/scene [(modeling/object 1 "Cube" cube)]))
 
-(defonce state (atom {:scene initial-scene :selected-object 1 :next-id 2 :selected-face 1 :selected-faces #{1} :distance 0.5 :snap 0.25
+(defonce state (atom {:scene initial-scene :selected-object 1 :next-id 2 :selected-face 1 :selected-faces #{1} :distance 0.5 :snap 0.25 :transform-axis :z
                       :component-mode :face :selected-vertex nil :selected-vertices #{} :selected-edge nil :selected-edges #{}
                       :history [initial-scene] :future [] :azimuth 0.7 :elevation 0.45
                       :mode :edit :profile :blender :project-id "untitled-model"
@@ -75,6 +75,8 @@
     (set! (.-textContent (.getElementById js/document "tool")) (if (= mode :edit) (str (name component-mode) " Select") "Object Select"))
     (doseq [kind [:vertex :edge :face]]
       (.toggle (.-classList (.getElementById js/document (str "component-" (name kind)))) "selected" (= kind component-mode)))
+    (doseq [axis [:x :y :z]]
+      (.toggle (.-classList (.getElementById js/document (str "axis-" (name axis)))) "selected" (= axis (:transform-axis @state))))
     (doseq [id ["extrude" "inset" "bevel" "loop-cut" "knife" "bridge" "scale" "move" "delete-face"]]
       (set! (.-disabled (.getElementById js/document id)) (or (not= mode :edit) (not= component-mode :face) (:object/locked? object))))
     (set! (.-disabled (.getElementById js/document "move")) (or (not= mode :edit) (:object/locked? object)))
@@ -160,9 +162,10 @@
 (defn- extrude! []
   (when (face-edit?)
   (let [{:keys [selected-face distance]} @state mesh (selected-mesh)
-        next-selected-face (dec (count (:mesh/faces mesh)))]
+        next-selected-face (dec (count (:mesh/faces mesh)))
+        delta (mapv #(* distance %) (modeling/face-normal mesh selected-face))]
     (swap! state assoc :selected-face next-selected-face :selected-faces #{next-selected-face})
-    (commit-mesh! (modeling/extrude-face mesh selected-face [0 0 distance])))))
+    (commit-mesh! (modeling/extrude-face mesh selected-face delta)))))
 (defn- inset! [] (let [{:keys [selected-face distance]} @state mesh (selected-mesh)] (when (and (face-edit?) (some? selected-face)) (commit-mesh! (modeling/inset-face mesh selected-face (max 0.05 (min 0.95 distance)))))))
 (defn- bevel! []
   (let [{:keys [selected-face distance]} @state mesh (selected-mesh)]
@@ -188,7 +191,8 @@
       (commit-mesh! (modeling/knife-face mesh selected-face 0 (quot edge-count 2) 0.5 0.5)))))
 (defn- scale! [] (let [{:keys [selected-faces distance]} @state mesh (selected-mesh)] (when (and (face-edit?) (seq selected-faces)) (commit-mesh! (modeling/scale-faces mesh selected-faces distance)))))
 (defn- move! []
-  (let [{:keys [component-mode selected-faces selected-vertices selected-edges distance]} @state mesh (selected-mesh) delta [0 0 distance]]
+  (let [{:keys [component-mode selected-faces selected-vertices selected-edges distance transform-axis]} @state mesh (selected-mesh)
+        delta (case transform-axis :x [distance 0 0] :y [0 distance 0] [0 0 distance])]
     (when (edit-mode?)
       (case component-mode :vertex (when (seq selected-vertices) (commit-mesh! (modeling/translate-vertices mesh selected-vertices delta)))
             :edge (when (seq selected-edges) (commit-mesh! (modeling/translate-edges mesh selected-edges delta)))
@@ -207,6 +211,9 @@
 (defn- toggle-mode! [] (swap! state update :mode #(if (= % :edit) :object :edit)) (update-ui!))
 (defn- set-component-mode! [kind]
   (swap! state assoc :component-mode kind)
+  (update-ui!))
+(defn- set-transform-axis! [axis]
+  (swap! state assoc :transform-axis axis :save-status :dirty)
   (update-ui!))
 (defn- select-all-components! []
   (when (edit-mode?)
@@ -261,13 +268,13 @@
 
 (defn- project-document []
   (let [{:keys [project-id project-name scene selected-object selected-face selected-faces selected-vertex selected-vertices selected-edge selected-edges component-mode mode
-                azimuth elevation profile snap]} @state]
+                azimuth elevation profile snap transform-axis]} @state]
     (project/document {:id project-id :name project-name :scene scene
                        :selection {:object-id selected-object :face-id selected-face :face-ids selected-faces
                                    :vertex-id selected-vertex :vertex-ids selected-vertices
                                    :edge selected-edge :edges selected-edges :component-mode component-mode :mode mode}
                        :camera {:azimuth azimuth :elevation elevation}
-                       :interaction {:profile profile :snap snap}})))
+                       :interaction {:profile profile :snap snap :transform-axis transform-axis}})))
 
 (defn- save-project! []
   (let [serialized (pr-str (project-document))
@@ -289,6 +296,7 @@
            :selected-edge (:edge selection) :selected-edges (set (or (:edges selection) (some-> (:edge selection) vector)))
            :component-mode (:component-mode selection :face) :mode (:mode selection)
            :azimuth (:azimuth camera) :elevation (:elevation camera) :snap (:snap interaction 0.25)
+           :transform-axis (:transform-axis interaction :z)
            :profile (:profile interaction) :history [scene] :future [] :save-status :saved)
     (set! (.-value (.getElementById js/document "profile")) (name (:profile interaction)))
     (set! (.-value (.getElementById js/document "snap-increment")) (:snap interaction 0.25))
@@ -497,6 +505,8 @@
     (.addEventListener (.getElementById js/document "snap-selection") "click" snap-selection!)
     (.addEventListener (.getElementById js/document "snap-increment") "change"
                        #(swap! state assoc :snap (max 1.0e-6 (js/parseFloat (.. % -target -value))) :save-status :dirty))
+    (doseq [axis [:x :y :z]]
+      (.addEventListener (.getElementById js/document (str "axis-" (name axis))) "click" #(set-transform-axis! axis)))
     (.addEventListener (.getElementById js/document "scale") "click" scale!)
     (.addEventListener (.getElementById js/document "move") "click" move!)
     (.addEventListener (.getElementById js/document "delete-face") "click" delete-face!)

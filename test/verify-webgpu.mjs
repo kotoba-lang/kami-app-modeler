@@ -76,8 +76,13 @@ const beforeVertexMove = await page.evaluate(() => window.__kami_modeler_mesh.ve
 await page.click("#move");
 const afterVertexMove = await page.evaluate(() => window.__kami_modeler_mesh.vertices?.[0] ?? window.__kami_modeler_mesh["mesh/vertices"]?.[0]);
 if (Math.abs(afterVertexMove[2] - beforeVertexMove[2] - 0.5) > 1e-8) throw new Error(`Multi-vertex move did not transform each vertex once: ${JSON.stringify({beforeVertexMove, afterVertexMove})}`);
+await page.click("#axis-x");
+const beforeAxisMove = afterVertexMove;
+await page.click("#move");
+const afterAxisMove = await page.evaluate(() => window.__kami_modeler_mesh.vertices?.[0] ?? window.__kami_modeler_mesh["mesh/vertices"]?.[0]);
+if (Math.abs(afterAxisMove[0] - beforeAxisMove[0] - 0.5) > 1e-8 || Math.abs(afterAxisMove[2] - beforeAxisMove[2]) > 1e-8) throw new Error(`X-axis constraint changed the wrong coordinates: ${JSON.stringify({beforeAxisMove, afterAxisMove})}`);
 if (errors.length) throw new Error(`Browser errors: ${errors.join("\n")}`);
 await page.screenshot({path: "test/modeler-webgpu.png"});
 await browser.close();
 await new Promise(resolve => server.close(resolve));
-console.log(JSON.stringify({before, selection, after, inset, bevel, loopCut, knife, multiSelection, batchMove: {beforeBatchMove, afterBatchMove}, snappedVertex, vertexSelection, vertexMove: {beforeVertexMove, afterVertexMove}, webgpu: true}));
+console.log(JSON.stringify({before, selection, after, inset, bevel, loopCut, knife, multiSelection, batchMove: {beforeBatchMove, afterBatchMove}, snappedVertex, vertexSelection, vertexMove: {beforeVertexMove, afterVertexMove}, axisMove: {beforeAxisMove, afterAxisMove}, webgpu: true}));
