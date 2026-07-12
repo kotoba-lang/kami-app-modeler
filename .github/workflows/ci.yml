@@ -1,6 +1,44 @@
 name: ci
 on: [push, pull_request]
 jobs:
+  clojure-quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeLaGuardo/setup-clojure@13.2
+        with:
+          cli: latest
+      - run: clojure -M:lint
+      - run: clojure -M:test
+  webgl2-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm}
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run verify:webgl2
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: modeler-webgl2
+          path: test/modeler-webgl2.png
+          if-no-files-found: ignore
+  browser-compatibility:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: {browser: [chromium, firefox, webkit]}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm}
+      - run: npm ci
+      - run: npx playwright install --with-deps ${{ matrix.browser }}
+      - run: npm run verify:compat
+        env:
+          BROWSER: ${{ matrix.browser }}
   webgpu-e2e:
     runs-on: macos-latest
     steps:

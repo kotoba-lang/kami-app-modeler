@@ -30,3 +30,6 @@ Verify the deployed application with:
 MODELER_URL=https://kotoba-lang.github.io/kami-app-modeler/ npm run verify:webgpu
 npm run verify:webgl2
 ```
+
+Start with the [user tutorial](docs/tutorial.md). Versioned production bundles
+are created from `v*` tags only after the release verification gate succeeds.

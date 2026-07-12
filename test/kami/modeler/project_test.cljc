@@ -34,3 +34,19 @@
                  (project/open {:kami/document :modeler-project :kami/version 99}))))
   (testing "unrelated EDN"
     (is (thrown? #?(:clj Exception :cljs js/Error) (project/open {:hello :world})))))
+
+(deftest rejects-structurally-dangerous-projects
+  (let [valid (project/document {:id "safe" :name "Safe" :scene scene
+                                 :selection {:object-id 7}
+                                 :camera {:azimuth 0.7 :elevation 0.45}
+                                 :interaction {:profile :blender}})]
+    (testing "duplicate object identifiers"
+      (is (thrown? #?(:clj Exception :cljs js/Error)
+                   (project/open (update-in valid [:project/scene :scene/objects]
+                                            #(conj % (first %)))))))
+    (testing "selection must reference an object in the scene"
+      (is (thrown? #?(:clj Exception :cljs js/Error)
+                   (project/open (assoc-in valid [:project/selection :object-id] 999)))))
+    (testing "camera values must be numeric"
+      (is (thrown? #?(:clj Exception :cljs js/Error)
+                   (project/open (assoc-in valid [:project/camera :azimuth] "east")))))))

@@ -132,6 +132,22 @@ await page.selectOption("#modifier-kind", "remove-degenerate");
 await page.click("#add-catalog-modifier");
 const modifierCatalog = await page.evaluate(() => { const state = JSON.parse(document.querySelector("#debug-state").textContent); return {count: state.modifierCount, labels: [...document.querySelectorAll("#modifier-stack .modifier-row span")].map(node => node.textContent)}; });
 if (!(modifierCatalog.count === 2 && modifierCatalog.labels[0].startsWith("twist ") && modifierCatalog.labels[1].startsWith("remove-degenerate "))) throw new Error(`Modifier catalog did not evaluate/persist ordered modifiers: ${JSON.stringify(modifierCatalog)}`);
+const beforeGltf = await page.evaluate(() => ({vertices: window.__kami_modeler_mesh.vertices?.length ?? window.__kami_modeler_mesh["mesh/vertices"]?.length,
+                                               faces: window.__kami_modeler_mesh.faces?.length ?? window.__kami_modeler_mesh["mesh/faces"]?.length}));
+await page.click("#save-project");
+const downloadPromise = page.waitForEvent("download");
+await page.click("#export-gltf");
+const download = await downloadPromise;
+const gltfPath = await download.path();
+await page.locator("#import-gltf-file").setInputFiles({name: "roundtrip.gltf", mimeType: "model/gltf+json", buffer: await import("node:fs/promises").then(fs => fs.readFile(gltfPath))});
+await page.waitForFunction(expected => {
+  const mesh = window.__kami_modeler_mesh;
+  return (mesh.vertices?.length ?? mesh["mesh/vertices"]?.length) === expected.vertices;
+}, beforeGltf, {timeout: 15000});
+const afterGltf = await page.evaluate(() => ({vertices: window.__kami_modeler_mesh.vertices?.length ?? window.__kami_modeler_mesh["mesh/vertices"]?.length,
+                                              faces: window.__kami_modeler_mesh.faces?.length ?? window.__kami_modeler_mesh["mesh/faces"]?.length}));
+if (JSON.stringify(beforeGltf) !== JSON.stringify(afterGltf)) throw new Error(`glTF round trip changed topology: ${JSON.stringify({beforeGltf, afterGltf})}`);
+await page.click("#load-project");
 await page.click("#save-project");
 await page.click("#save-project");
 await page.evaluate(() => localStorage.setItem("kami.modeler.project.v2", "{:corrupt"));
@@ -148,4 +164,4 @@ if (errors.length) throw new Error(`Browser errors: ${errors.join("\n")}`);
 await page.screenshot({path: "test/modeler-webgpu.png"});
 await browser.close();
 await new Promise(resolve => server.close(resolve));
-console.log(JSON.stringify({booleanState, boxSelection, before, selection, after, inset, bevel, loopCut, knife, multiSelection, batchMove: {beforeBatchMove, afterBatchMove}, snappedVertex, vertexSelection, vertexMove: {beforeVertexMove, afterVertexMove}, axisMove: {beforeAxisMove, afterAxisMove, afterGizmoMove}, normals: {faceBeforeFlip, faceAfterFlip, outwardVolume}, uvTransform: {uvBeforeTransform, uvAfterTransform}, textureState, modifierCatalog, recovered, stress, largeScene, webgpu: true}));
+console.log(JSON.stringify({booleanState, boxSelection, before, selection, after, inset, bevel, loopCut, knife, multiSelection, batchMove: {beforeBatchMove, afterBatchMove}, snappedVertex, vertexSelection, vertexMove: {beforeVertexMove, afterVertexMove}, axisMove: {beforeAxisMove, afterAxisMove, afterGizmoMove}, normals: {faceBeforeFlip, faceAfterFlip, outwardVolume}, uvTransform: {uvBeforeTransform, uvAfterTransform}, textureState, modifierCatalog, gltfRoundTrip: {beforeGltf, afterGltf}, recovered, stress, largeScene, webgpu: true}));
