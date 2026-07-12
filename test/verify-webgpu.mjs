@@ -44,8 +44,12 @@ await page.click("#inset");
 const inset = await page.evaluate(() => ({vertices: window.__kami_modeler_mesh.vertices?.length ?? window.__kami_modeler_mesh["mesh/vertices"]?.length,
                                           faces: window.__kami_modeler_mesh.faces?.length ?? window.__kami_modeler_mesh["mesh/faces"]?.length}));
 if (!(inset.vertices > after.vertices && inset.faces > after.faces)) throw new Error(`Inset did not change topology: ${JSON.stringify({after, inset})}`);
+await page.click("#bevel");
+const bevel = await page.evaluate(() => ({vertices: window.__kami_modeler_mesh.vertices?.length ?? window.__kami_modeler_mesh["mesh/vertices"]?.length,
+                                          faces: window.__kami_modeler_mesh.faces?.length ?? window.__kami_modeler_mesh["mesh/faces"]?.length}));
+if (!(bevel.vertices > inset.vertices && bevel.faces > inset.faces)) throw new Error(`Bevel did not create a chamfer ring: ${JSON.stringify({inset, bevel})}`);
 if (errors.length) throw new Error(`Browser errors: ${errors.join("\n")}`);
 await page.screenshot({path: "test/modeler-webgpu.png"});
 await browser.close();
 await new Promise(resolve => server.close(resolve));
-console.log(JSON.stringify({before, selection, after, inset, webgpu: true}));
+console.log(JSON.stringify({before, selection, after, inset, bevel, webgpu: true}));

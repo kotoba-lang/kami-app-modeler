@@ -155,6 +155,11 @@
     (swap! state assoc :selected-face next-selected-face)
     (commit-mesh! (modeling/extrude-face mesh selected-face [0 0 distance])))))
 (defn- inset! [] (let [{:keys [selected-face distance]} @state mesh (selected-mesh)] (when (and (face-edit?) (some? selected-face)) (commit-mesh! (modeling/inset-face mesh selected-face (max 0.05 (min 0.95 distance)))))))
+(defn- bevel! []
+  (let [{:keys [selected-face distance]} @state mesh (selected-mesh)]
+    (when (and (face-edit?) (some? selected-face))
+      (commit-mesh! (modeling/bevel-face mesh selected-face
+                                         (max 0.01 (min 0.49 (/ distance 4.0))) distance)))))
 (defn- scale! [] (let [{:keys [selected-face distance]} @state mesh (selected-mesh)] (when (and (face-edit?) (some? selected-face)) (commit-mesh! (modeling/scale-face mesh selected-face distance)))))
 (defn- move! []
   (let [{:keys [component-mode selected-face selected-vertex selected-edge distance]} @state mesh (selected-mesh) delta [0 0 distance]]
@@ -190,14 +195,14 @@
       (and ctrl (= key "y")) :redo
       (= key "tab") :toggle-mode
       (= key "1") :vertex-mode (= key "2") :edge-mode (= key "3") :face-mode
-      (= profile :blender) ({"e" :extrude "i" :inset "g" :move "s" :scale "x" :delete-face} key)
+      (= profile :blender) ({"e" :extrude "i" :inset "b" :bevel "g" :move "s" :scale "x" :delete-face} key)
       (= profile :maya) (cond (and ctrl (= key "e")) :extrude (and ctrl (= key "d")) :duplicate-object
                               (= key "w") :move (= key "r") :scale (= key "delete") :delete-face)
       (= profile :max) (cond (and alt (= key "e")) :extrude (and ctrl (= key "v")) :duplicate-object
                              (= key "w") :move (= key "r") :scale (= key "delete") :delete-face)
       (= profile :c4d) ({"d" :extrude "i" :inset "e" :move "t" :scale "backspace" :delete-face} key))))
 (defn- execute-command! [command]
-  (case command :extrude (extrude!) :inset (inset!) :move (move!) :scale (scale!)
+  (case command :extrude (extrude!) :inset (inset!) :bevel (bevel!) :move (move!) :scale (scale!)
         :delete-face (delete-face!) :duplicate-object (duplicate-object!) :undo (undo!) :redo (redo!)
         :toggle-mode (toggle-mode!) :vertex-mode (set-component-mode! :vertex)
         :edge-mode (set-component-mode! :edge) :face-mode (set-component-mode! :face) nil))
@@ -419,6 +424,7 @@
   (let [canvas (.getElementById js/document "gpu-canvas") drag (atom nil)]
     (.addEventListener (.getElementById js/document "extrude") "click" extrude!)
     (.addEventListener (.getElementById js/document "inset") "click" inset!)
+    (.addEventListener (.getElementById js/document "bevel") "click" bevel!)
     (.addEventListener (.getElementById js/document "scale") "click" scale!)
     (.addEventListener (.getElementById js/document "move") "click" move!)
     (.addEventListener (.getElementById js/document "delete-face") "click" delete-face!)
