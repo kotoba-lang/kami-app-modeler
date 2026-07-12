@@ -9,6 +9,13 @@ modifiers, UV/image materials, undo/redo, recovery and EDN/glTF exchange.
 UI markup and styling are generated exclusively through `kotoba-lang/html` and
 `css`.
 
+The large-scene browser gates render 20,000 sphere instances / 11.2 million
+resident triangles as one shared-geometry draw. On the named local Chromium
+reference run, WebGPU measured 206.5 ms first submission and 0.2 ms p95 submit;
+forced WebGL2 measured 917.8 ms first submission and 6.6 ms p95 submit. Both
+report the same stable picking sample and source provenance. WebGL2 uses a
+cached mat4/color instance buffer rather than 20,000 individual draw calls.
+
 Public app: <https://kotoba-lang.github.io/kami-app-modeler/>
 
 The current 5/5 rating applies to the declared browser polygon-modeler scope.
@@ -21,4 +28,5 @@ Verify the deployed application with:
 
 ```bash
 MODELER_URL=https://kotoba-lang.github.io/kami-app-modeler/ npm run verify:webgpu
+npm run verify:webgl2
 ```

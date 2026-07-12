@@ -4,4 +4,5 @@
 node_modules/
 dist/
 test/modeler-webgpu.png
+test/modeler-webgl2.png
 public/js/cljs-runtime/

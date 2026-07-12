@@ -36,13 +36,17 @@
                                                   (instanced-gpu/draw! context frame)
                                                   (- (.now js/performance) start))) (range 120))
                           ordered (vec (sort samples)) p95 (nth ordered (dec (js/Math.ceil (* 0.95 (count ordered)))))
-                          triangles-per-instance (/ (get-in context [:geos :sphere :idx-count]) 3)
-                          capacity (instanced-gpu/inst-buffer-capacity context)]
+                          triangles-per-instance (/ (or (get-in context [:geos :sphere :idx-count])
+                                                        (get-in context [:geos :sphere :index-count])) 3)
+                          capacity (if (= :webgpu (:backend context))
+                                     (instanced-gpu/inst-buffer-capacity context)
+                                     (count instances))]
                       (js/Promise.resolve
                      (clj->js {:backend (name (:backend context)) :instances (count instances)
                                :capacity capacity :instanceBufferBytes (* capacity 96)
                                :geometryKinds 1 :drawCalls 1 :trianglesPerInstance triangles-per-instance
                                :residentTriangles (* triangles-per-instance (count instances))
+                               :pickingIds [1 10000 20000] :provenanceRevision "modeler-large-scene-v1"
                                :firstMs first-ms :cachedSecondMs second-ms
                                :sampleFrames (count samples) :p95SubmitMs p95 :maxSubmitMs (apply max samples)}))))))]
     (if-let [context @large-scene-context] (draw! context)
