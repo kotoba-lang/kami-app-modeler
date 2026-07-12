@@ -96,7 +96,8 @@
     (doseq [kind [:vertex :edge :face]]
       (.toggle (.-classList (.getElementById js/document (str "component-" (name kind)))) "selected" (= kind component-mode)))
     (doseq [axis [:x :y :z]]
-      (.toggle (.-classList (.getElementById js/document (str "axis-" (name axis)))) "selected" (= axis (:transform-axis @state))))
+      (doseq [prefix ["axis-" "gizmo-"]]
+        (.toggle (.-classList (.getElementById js/document (str prefix (name axis)))) "selected" (= axis (:transform-axis @state)))))
     (doseq [id ["extrude" "inset" "bevel" "loop-cut" "knife" "bridge" "flip-normals" "scale" "move" "delete-face"]]
       (set! (.-disabled (.getElementById js/document id)) (or (not= mode :edit) (not= component-mode :face) (:object/locked? object))))
     (set! (.-disabled (.getElementById js/document "move")) (or (not= mode :edit) (:object/locked? object)))
@@ -589,7 +590,8 @@
     (.addEventListener (.getElementById js/document "snap-increment") "change"
                        #(swap! state assoc :snap (max 1.0e-6 (js/parseFloat (.. % -target -value))) :save-status :dirty))
     (doseq [axis [:x :y :z]]
-      (.addEventListener (.getElementById js/document (str "axis-" (name axis))) "click" #(set-transform-axis! axis)))
+      (doseq [prefix ["axis-" "gizmo-"]]
+        (.addEventListener (.getElementById js/document (str prefix (name axis))) "click" #(set-transform-axis! axis))))
     (.addEventListener (.getElementById js/document "scale") "click" scale!)
     (.addEventListener (.getElementById js/document "move") "click" move!)
     (.addEventListener (.getElementById js/document "delete-face") "click" delete-face!)
