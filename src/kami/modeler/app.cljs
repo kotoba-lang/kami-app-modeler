@@ -9,7 +9,7 @@
 (def initial-scene (modeling/scene [(modeling/object 1 "Cube" cube)]))
 
 (defonce state (atom {:scene initial-scene :selected-object 1 :next-id 2 :selected-face 1 :selected-faces #{1} :distance 0.5 :snap 0.25
-                      :component-mode :face :selected-vertex nil :selected-edge nil
+                      :component-mode :face :selected-vertex nil :selected-vertices #{} :selected-edge nil :selected-edges #{}
                       :history [initial-scene] :future [] :azimuth 0.7 :elevation 0.45
                       :mode :edit :profile :blender :project-id "untitled-model"
                       :project-name "Untitled Model" :revision 0 :save-status :clean}))
@@ -53,15 +53,19 @@
                  (modeling/scene-renderables (:scene @state)))))))
 
 (defn- update-ui! []
-  (let [{:keys [scene distance history future profile selected-face selected-faces selected-vertex selected-edge component-mode mode save-status revision]} @state
+  (let [{:keys [scene distance history future profile selected-face selected-faces selected-vertex selected-vertices selected-edge selected-edges component-mode mode save-status revision]} @state
         selected-id (:selected-object @state) mesh (selected-mesh) object (selected-object)]
     (set! (.-textContent (.getElementById js/document "distanceValue")) (.toFixed distance 2))
     (set! (.-textContent (.getElementById js/document "meshStats"))
           (str (count (:scene/objects scene)) " objects · " (count (:mesh/vertices (modeling/scene-mesh scene))) " vertices"))
     (set! (.-textContent (.getElementById js/document "selection"))
           (if (= mode :edit) (case component-mode
-                               :vertex (if (some? selected-vertex) (str "Vertex " selected-vertex " selected") "No vertex selected")
-                               :edge (if (some? selected-edge) (str "Edge " (pr-str selected-edge) " selected") "No edge selected")
+                               :vertex (if (seq selected-vertices)
+                                         (if (= 1 (count selected-vertices)) (str "Vertex " selected-vertex " selected") (str (count selected-vertices) " vertices selected"))
+                                         "No vertex selected")
+                               :edge (if (seq selected-edges)
+                                       (if (= 1 (count selected-edges)) (str "Edge " (pr-str selected-edge) " selected") (str (count selected-edges) " edges selected"))
+                                       "No edge selected")
                                (if (seq selected-faces)
                                  (if (= 1 (count selected-faces)) (str "Face " selected-face " selected")
                                      (str (count selected-faces) " faces selected"))
@@ -184,10 +188,10 @@
       (commit-mesh! (modeling/knife-face mesh selected-face 0 (quot edge-count 2) 0.5 0.5)))))
 (defn- scale! [] (let [{:keys [selected-faces distance]} @state mesh (selected-mesh)] (when (and (face-edit?) (seq selected-faces)) (commit-mesh! (modeling/scale-faces mesh selected-faces distance)))))
 (defn- move! []
-  (let [{:keys [component-mode selected-faces selected-vertex selected-edge distance]} @state mesh (selected-mesh) delta [0 0 distance]]
+  (let [{:keys [component-mode selected-faces selected-vertices selected-edges distance]} @state mesh (selected-mesh) delta [0 0 distance]]
     (when (edit-mode?)
-      (case component-mode :vertex (when (some? selected-vertex) (commit-mesh! (modeling/translate-vertex mesh selected-vertex delta)))
-            :edge (when selected-edge (commit-mesh! (modeling/translate-edge mesh selected-edge delta)))
+      (case component-mode :vertex (when (seq selected-vertices) (commit-mesh! (modeling/translate-vertices mesh selected-vertices delta)))
+            :edge (when (seq selected-edges) (commit-mesh! (modeling/translate-edges mesh selected-edges delta)))
             :face (when (seq selected-faces) (commit-mesh! (modeling/translate-faces mesh selected-faces delta))) nil))))
 (defn- delete-face! [] (let [{:keys [selected-face]} @state mesh (selected-mesh)] (when (and (face-edit?) (some? selected-face) (> (count (:mesh/faces mesh)) 1)) (commit-mesh! (modeling/delete-face mesh selected-face)) (swap! state assoc :selected-face 0 :selected-faces #{0}) (update-ui!))))
 (defn- undo! [] (when (> (count (:history @state)) 1) (swap! state (fn [s] (let [h (:history s) current (peek h) h' (pop h)] (assoc s :history h' :scene (peek h') :future (conj (:future s) current))))) (refresh-mesh!) (update-ui!)))
@@ -202,18 +206,23 @@
       (swap! state assoc :selected-object next-id :selected-face 0) (commit-scene! scene))))
 (defn- toggle-mode! [] (swap! state update :mode #(if (= % :edit) :object :edit)) (update-ui!))
 (defn- set-component-mode! [kind]
-  (swap! state assoc :component-mode kind :selected-vertex nil :selected-edge nil)
+  (swap! state assoc :component-mode kind)
   (update-ui!))
-(defn- select-all-faces! []
-  (when (face-edit?)
-    (let [selected (set (range (count (:mesh/faces (selected-mesh)))))]
-      (swap! state assoc :selected-faces selected :selected-face (first selected))
-      (update-ui!))))
+(defn- select-all-components! []
+  (when (edit-mode?)
+    (case (:component-mode @state)
+      :vertex (let [selected (set (range (count (:mesh/vertices (selected-mesh)))))]
+                (swap! state assoc :selected-vertices selected :selected-vertex (first selected)))
+      :edge (let [selected (set (modeling/mesh-edges (selected-mesh)))]
+              (swap! state assoc :selected-edges selected :selected-edge (first selected)))
+      :face (let [selected (set (range (count (:mesh/faces (selected-mesh)))))]
+              (swap! state assoc :selected-faces selected :selected-face (first selected))) nil)
+    (update-ui!)))
 (defn- selected-vertex-set []
-  (let [{:keys [component-mode selected-vertex selected-edge selected-faces]} @state]
+  (let [{:keys [component-mode selected-vertices selected-edges selected-faces]} @state]
     (case component-mode
-      :vertex (if (some? selected-vertex) #{selected-vertex} #{})
-      :edge (set selected-edge)
+      :vertex selected-vertices
+      :edge (set (mapcat identity selected-edges))
       :face (if (seq selected-faces) (set (modeling/selected-vertex-indices (selected-mesh) selected-faces)) #{})
       #{})))
 (defn- snap-selection! []
@@ -232,7 +241,7 @@
       (and ctrl (= key "y")) :redo
       (and (= profile :blender) ctrl (= key "r")) :loop-cut
       (= key "tab") :toggle-mode
-      (and (= (:component-mode @state) :face) (= key "a")) :select-all-faces
+      (= key "a") :select-all-components
       (= key "1") :vertex-mode (= key "2") :edge-mode (= key "3") :face-mode
       (= profile :blender) ({"e" :extrude "i" :inset "b" :bevel "k" :knife "g" :move "s" :scale "x" :delete-face} key)
       (= profile :maya) (cond (and ctrl (= key "e")) :extrude (and ctrl (= key "d")) :duplicate-object
@@ -245,17 +254,18 @@
         :delete-face (delete-face!) :duplicate-object (duplicate-object!) :undo (undo!) :redo (redo!)
         :toggle-mode (toggle-mode!) :vertex-mode (set-component-mode! :vertex)
         :edge-mode (set-component-mode! :edge) :face-mode (set-component-mode! :face)
-        :select-all-faces (select-all-faces!) nil))
+        :select-all-components (select-all-components!) nil))
 
 (def ^:private storage-key "kami.modeler.project.v2")
 (def ^:private backup-key "kami.modeler.project.backup")
 
 (defn- project-document []
-  (let [{:keys [project-id project-name scene selected-object selected-face selected-faces selected-vertex selected-edge component-mode mode
+  (let [{:keys [project-id project-name scene selected-object selected-face selected-faces selected-vertex selected-vertices selected-edge selected-edges component-mode mode
                 azimuth elevation profile snap]} @state]
     (project/document {:id project-id :name project-name :scene scene
-                       :selection {:object-id selected-object :face-id selected-face :face-ids selected-faces :vertex-id selected-vertex
-                                   :edge selected-edge :component-mode component-mode :mode mode}
+                       :selection {:object-id selected-object :face-id selected-face :face-ids selected-faces
+                                   :vertex-id selected-vertex :vertex-ids selected-vertices
+                                   :edge selected-edge :edges selected-edges :component-mode component-mode :mode mode}
                        :camera {:azimuth azimuth :elevation elevation}
                        :interaction {:profile profile :snap snap}})))
 
@@ -275,7 +285,8 @@
     (swap! state assoc :project-id (:project/id p) :project-name (:project/name p)
            :scene scene :selected-object object-id :selected-face (:face-id selection)
            :selected-faces (set (or (:face-ids selection) [(:face-id selection)]))
-           :selected-vertex (:vertex-id selection) :selected-edge (:edge selection)
+           :selected-vertex (:vertex-id selection) :selected-vertices (set (or (:vertex-ids selection) (some-> (:vertex-id selection) vector)))
+           :selected-edge (:edge selection) :selected-edges (set (or (:edges selection) (some-> (:edge selection) vector)))
            :component-mode (:component-mode selection :face) :mode (:mode selection)
            :azimuth (:azimuth camera) :elevation (:elevation camera) :snap (:snap interaction 0.25)
            :profile (:profile interaction) :history [scene] :future [] :save-status :saved)
@@ -457,8 +468,16 @@
         object (selected-object) local-eye (mapv - eye (:object/translation object))
         kind (:component-mode @state) picked (modeling/pick-element (:object/mesh object) local-eye dir kind)]
     (when (some? picked)
-      (case kind :vertex (swap! state assoc :selected-vertex picked)
-            :edge (swap! state assoc :selected-edge picked)
+      (case kind :vertex (if (.-shiftKey event)
+                          (swap! state (fn [s] (let [next (if (contains? (:selected-vertices s) picked)
+                                                            (disj (:selected-vertices s) picked) (conj (:selected-vertices s) picked))]
+                                               (assoc s :selected-vertex (when (seq next) picked) :selected-vertices next))))
+                          (swap! state assoc :selected-vertex picked :selected-vertices #{picked}))
+            :edge (if (.-shiftKey event)
+                    (swap! state (fn [s] (let [next (if (contains? (:selected-edges s) picked)
+                                                      (disj (:selected-edges s) picked) (conj (:selected-edges s) picked))]
+                                         (assoc s :selected-edge (when (seq next) picked) :selected-edges next))))
+                    (swap! state assoc :selected-edge picked :selected-edges #{picked}))
             :face (if (.-shiftKey event)
                     (swap! state (fn [s] (let [selected (:selected-faces s)
                                                next (if (contains? selected picked) (disj selected picked) (conj selected picked))]
@@ -474,7 +493,7 @@
     (.addEventListener (.getElementById js/document "loop-cut") "click" loop-cut!)
     (.addEventListener (.getElementById js/document "knife") "click" knife!)
     (.addEventListener (.getElementById js/document "bridge") "click" bridge!)
-    (.addEventListener (.getElementById js/document "select-all-faces") "click" select-all-faces!)
+    (.addEventListener (.getElementById js/document "select-all-faces") "click" select-all-components!)
     (.addEventListener (.getElementById js/document "snap-selection") "click" snap-selection!)
     (.addEventListener (.getElementById js/document "snap-increment") "change"
                        #(swap! state assoc :snap (max 1.0e-6 (js/parseFloat (.. % -target -value))) :save-status :dirty))
