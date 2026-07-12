@@ -37,7 +37,7 @@
     [(/ (bit-and (bit-shift-right n 16) 255) 255)
      (/ (bit-and (bit-shift-right n 8) 255) 255)
      (/ (bit-and n 255) 255) 1.0]))
-(declare commit-scene! apply-project! base64->buffer refresh-mesh! update-ui!)
+(declare commit-scene! apply-project! base64->buffer refresh-mesh! update-ui! selected-vertex-set)
 
 (defn- texture-payload [data-uri]
   (let [mime-type (subs data-uri 5 (.indexOf data-uri ";"))
@@ -164,6 +164,7 @@
                                        :textureCacheCount (count (:texture-cache @runtime))
                                        :textureDevice (boolean (get-in @runtime [:mesh-context :device]))
                                        :uvCount (count (:mesh/uvs mesh))
+                                       :firstUV (first (:mesh/uvs mesh))
                                        :signedVolume (modeling/signed-volume mesh)
                                        :projectVersion project/current-version :revision revision :saveStatus (name save-status)})))
     (set! (.-textContent (.getElementById js/document "project-status"))
@@ -239,6 +240,13 @@
   (let [material (dissoc (:object/material (selected-object)) :material/base-color-texture)]
     (commit-scene! (modeling/set-object-material (:scene @state) (:selected-object @state) material))
     (set! (.-textContent (.getElementById js/document "texture-status")) "No texture")))
+(defn- input-number [id] (js/parseFloat (.-value (.getElementById js/document id))))
+(defn- transform-uv-selection! []
+  (let [indices (selected-vertex-set)
+        options {:offset [(input-number "uv-offset-u") (input-number "uv-offset-v")]
+                 :scale [(input-number "uv-scale-u") (input-number "uv-scale-v")]
+                 :rotation (* (/ js/Math.PI 180) (input-number "uv-rotation"))}]
+    (when (seq indices) (commit-mesh! (modeling/transform-uvs (selected-mesh) indices options)))))
 (defn- delete-face! [] (let [{:keys [selected-face]} @state mesh (selected-mesh)] (when (and (face-edit?) (some? selected-face) (> (count (:mesh/faces mesh)) 1)) (commit-mesh! (modeling/delete-face mesh selected-face)) (swap! state assoc :selected-face 0 :selected-faces #{0}) (update-ui!))))
 (defn- undo! [] (when (> (count (:history @state)) 1) (swap! state (fn [s] (let [h (:history s) current (peek h) h' (pop h)] (assoc s :history h' :scene (peek h') :future (conj (:future s) current))))) (refresh-mesh!) (update-ui!)))
 (defn- redo! [] (when-let [scene (peek (:future @state))] (swap! state (fn [s] (assoc s :scene scene :history (conj (:history s) scene) :future (pop (:future s))))) (refresh-mesh!) (update-ui!)))
@@ -546,6 +554,7 @@
     (.addEventListener (.getElementById js/document "orient-outward") "click" orient-outward!)
     (.addEventListener (.getElementById js/document "texture-file") "change" import-texture!)
     (.addEventListener (.getElementById js/document "remove-texture") "click" remove-texture!)
+    (.addEventListener (.getElementById js/document "transform-uv") "click" transform-uv-selection!)
     (.addEventListener (.getElementById js/document "bridge") "click" bridge!)
     (.addEventListener (.getElementById js/document "select-all-faces") "click" select-all-components!)
     (.addEventListener (.getElementById js/document "snap-selection") "click" snap-selection!)

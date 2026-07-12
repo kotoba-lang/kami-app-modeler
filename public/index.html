@@ -91,6 +91,12 @@ button { border: 1px solid #35446e; border-radius: 7px; background: #171f3b; col
         <h2>UV Mapping</h2>
         <label>Projection axis<select id="unwrap-axis"><option value="z">Z · Front</option><option value="y">Y · Top</option><option value="x">X · Side</option></select></label>
         <button id="unwrap-uv">Planar Unwrap</button>
+        <label>Offset U<input id="uv-offset-u" type="number" step="0.05" value="0"></label>
+        <label>Offset V<input id="uv-offset-v" type="number" step="0.05" value="0"></label>
+        <label>Scale U<input id="uv-scale-u" type="number" min="0.001" step="0.1" value="1"></label>
+        <label>Scale V<input id="uv-scale-v" type="number" min="0.001" step="0.1" value="1"></label>
+        <label>Rotation °<input id="uv-rotation" type="number" step="15" value="0"></label>
+        <button id="transform-uv">Transform Selected UVs</button>
         <h2>Modifiers</h2>
         <button id="add-mirror">＋ Mirror X</button>
         <button id="add-subdivision">＋ Subdivision</button>
