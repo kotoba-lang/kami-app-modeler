@@ -41,6 +41,7 @@ button { border: 1px solid #35446e; border-radius: 7px; background: #171f3b; col
         <h2>Edit tools</h2>
         <button class="selected" data-command="select">Select Face</button>
         <button id="select-all-faces">Select All Components</button>
+        <button id="box-select">Box Select</button>
         <label>Grid snap<input id="snap-increment" type="number" min="0.000001" step="0.05" value="0.25"></label>
         <button id="snap-selection">Snap Selection</button>
         <h2>Transform Axis</h2><div><button id="axis-x">X</button><button id="axis-y">Y</button><button class="selected" id="axis-z">Z</button></div>
@@ -65,6 +66,7 @@ button { border: 1px solid #35446e; border-radius: 7px; background: #171f3b; col
       </aside>
       <section class="viewport">
         <canvas id="gpu-canvas" aria-label="WebGPU mesh viewport"></canvas>
+        <div id="selection-box" style="display:none;position:fixed;border:1px solid #8aa8ff;background:#6f8fff33;pointer-events:none;z-index:10;"></div>
         <div class="gpu-fallback" id="gpu-status">Initializing WebGPU…</div>
         <div class="axis">Y
 │

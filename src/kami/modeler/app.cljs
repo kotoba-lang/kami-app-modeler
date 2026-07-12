@@ -8,12 +8,13 @@
 (def cube (modeling/cube 2))
 (def initial-scene (modeling/scene [(modeling/object 1 "Cube" cube)]))
 
-(defonce state (atom {:scene initial-scene :selected-object 1 :next-id 2 :selected-face 1 :selected-faces #{1} :distance 0.5 :snap 0.25 :transform-axis :z
+(defonce state (atom {:scene initial-scene :selected-object 1 :next-id 2 :selected-face 1 :selected-faces #{1} :distance 0.5 :snap 0.25 :transform-axis :z :selection-tool :pick
                       :component-mode :face :selected-vertex nil :selected-vertices #{} :selected-edge nil :selected-edges #{}
                       :history [initial-scene] :future [] :azimuth 0.7 :elevation 0.45
                       :mode :edit :profile :blender :project-id "untitled-model"
                       :project-name "Untitled Model" :revision 0 :save-status :clean}))
 (defonce runtime (atom nil))
+(defonce box-drag (atom nil))
 
 (defn- sub3 [a b] (mapv - a b))
 (defn- cross [[ax ay az] [bx by bz]] [(- (* ay bz) (* az by)) (- (* az bx) (* ax bz)) (- (* ax by) (* ay bx))])
@@ -544,7 +545,35 @@
 (defn- normalize [v] (let [l (max 1.0e-9 (js/Math.hypot (nth v 0) (nth v 1) (nth v 2)))] (mapv #(/ % l) v)))
 (defn- add3 [& vs] (apply mapv + vs))
 (defn- mul3 [v s] (mapv #(* % s) v))
+(defn- dot3 [a b] (reduce + (map * a b)))
 (defn- camera-eye [] (let [{:keys [azimuth elevation]} @state d 6] [(* d (js/Math.cos elevation) (js/Math.cos azimuth)) (* d (js/Math.sin elevation)) (* d (js/Math.cos elevation) (js/Math.sin azimuth))]))
+(defn- project-point [canvas point]
+  (let [rect (.getBoundingClientRect canvas) eye (camera-eye) forward (normalize (mapv - [0 0 0] eye))
+        right (normalize (cross forward [0 1 0])) up (cross right forward) relative (mapv - point eye)
+        depth (dot3 relative forward) tan (js/Math.tan (/ js/Math.PI 6)) aspect (/ (.-width rect) (.-height rect))]
+    (when (pos? depth)
+      [(+ (.-left rect) (* (.-width rect) (/ (inc (/ (dot3 relative right) (* depth tan aspect))) 2)))
+       (+ (.-top rect) (* (.-height rect) (/ (- 1 (/ (dot3 relative up) (* depth tan))) 2)))])))
+(defn- inside-box? [[x y] [x0 y0 x1 y1]] (and (<= x0 x x1) (<= y0 y y1)))
+(defn- box-select! [canvas [ax ay] [bx by]]
+  (let [bounds [(min ax bx) (min ay by) (max ax bx) (max ay by)] object (selected-object)
+        mesh (:object/mesh object) scene (:scene @state) object-id (:object/id object)
+        projected (mapv #(project-point canvas (modeling/transform-point-world scene object-id %)) (:mesh/vertices mesh))
+        vertices (set (keep-indexed (fn [index point] (when (and point (inside-box? point bounds)) index)) projected))]
+    (case (:component-mode @state)
+      :vertex (swap! state assoc :selected-vertices vertices :selected-vertex (first vertices))
+      :edge (let [edges (set (filter #(every? vertices %) (modeling/mesh-edges mesh)))]
+              (swap! state assoc :selected-edges edges :selected-edge (first edges)))
+      :face (let [faces (set (keep-indexed (fn [index face] (when (every? vertices face) index)) (:mesh/faces mesh)))]
+              (swap! state assoc :selected-faces faces :selected-face (first faces))) nil)
+    (update-ui!)))
+(defn- update-selection-box! [[ax ay] [bx by]]
+  (let [box (.getElementById js/document "selection-box")]
+    (set! (.-display (.-style box)) "block")
+    (set! (.-left (.-style box)) (str (min ax bx) "px"))
+    (set! (.-top (.-style box)) (str (min ay by) "px"))
+    (set! (.-width (.-style box)) (str (js/Math.abs (- bx ax)) "px"))
+    (set! (.-height (.-style box)) (str (js/Math.abs (- by ay)) "px"))))
 (defn- pick-at! [canvas event]
   (let [r (.getBoundingClientRect canvas) x (- (* 2 (/ (- (.-clientX event) (.-left r)) (.-width r))) 1)
         y (- 1 (* 2 (/ (- (.-clientY event) (.-top r)) (.-height r)))) eye (camera-eye)
@@ -586,6 +615,9 @@
       (.addEventListener (.getElementById js/document id) "click" #(boolean-objects! operation)))
     (.addEventListener (.getElementById js/document "bridge") "click" bridge!)
     (.addEventListener (.getElementById js/document "select-all-faces") "click" select-all-components!)
+    (.addEventListener (.getElementById js/document "box-select") "click"
+                       #(do (swap! state update :selection-tool (fn [tool] (if (= tool :box) :pick :box)))
+                            (.toggle (.-classList (.getElementById js/document "box-select")) "selected" (= :box (:selection-tool @state)))))
     (.addEventListener (.getElementById js/document "snap-selection") "click" snap-selection!)
     (.addEventListener (.getElementById js/document "snap-increment") "change"
                        #(swap! state assoc :snap (max 1.0e-6 (js/parseFloat (.. % -target -value))) :save-status :dirty))
@@ -602,8 +634,17 @@
     (.addEventListener (.getElementById js/document "distance") "input" #(swap! state assoc :distance (js/parseFloat (.. % -target -value))))
     (.addEventListener (.getElementById js/document "profile") "change" #(do (swap! state assoc :profile (keyword (.. % -target -value))) (update-ui!)))
     (.addEventListener canvas "contextmenu" #(.preventDefault %))
-    (.addEventListener canvas "pointerdown" #(if (or (= 1 (.-button %)) (.-altKey %)) (reset! drag [(.-clientX %) (.-clientY %)]) (when (edit-mode?) (pick-at! canvas %))))
-    (.addEventListener js/window "pointerup" #(reset! drag nil))
+    (.addEventListener canvas "pointerdown"
+                       #(cond (or (= 1 (.-button %)) (.-altKey %)) (reset! drag [(.-clientX %) (.-clientY %)])
+                              (= :box (:selection-tool @state)) (do (reset! box-drag [(.-clientX %) (.-clientY %)])
+                                                                    (update-selection-box! @box-drag @box-drag))
+                              (edit-mode?) (pick-at! canvas %)))
+    (.addEventListener js/window "pointerup"
+                       #(do (reset! drag nil)
+                            (when-let [start @box-drag]
+                              (box-select! canvas start [(.-clientX %) (.-clientY %)])
+                              (set! (.-display (.-style (.getElementById js/document "selection-box"))) "none")
+                              (reset! box-drag nil))))
     (.addEventListener js/window "pointermove"
       (fn [event]
         (when-let [[x y] @drag]
@@ -611,6 +652,8 @@
           (swap! state update :elevation
                  (fn [e] (max -1.3 (min 1.3 (+ e (* 0.008 (- (.-clientY event) y)))))))
           (reset! drag [(.-clientX event) (.-clientY event)]))))
+    (.addEventListener js/window "pointermove"
+                       #(when-let [start @box-drag] (update-selection-box! start [(.-clientX %) (.-clientY %)])))
     (.addEventListener js/window "keydown"
                        #(when-not (editable-target? %)
                           (when-let [command (command-for-event %)]
