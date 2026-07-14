@@ -27,7 +27,11 @@
   (cond
     (= :modeler-project (:kami/document value))
     (case (:kami/version value)
-      2 (normalize-materials value)
+      2 (-> value
+            (update :project/selection #(merge {:object-id nil :face-id 0 :mode :object} (or % {})))
+            (update :project/camera #(merge {:azimuth 0.7 :elevation 0.45} (or % {})))
+            (update :project/interaction #(merge {:profile :blender} (or % {})))
+            normalize-materials)
       1 (-> value
             (assoc :kami/version 2
                    :project/selection {:object-id (some-> value :project/scene :scene/objects first :object/id)

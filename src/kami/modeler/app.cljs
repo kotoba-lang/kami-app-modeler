@@ -3,6 +3,7 @@
             [goog.object :as gobj]
             [kami.modeling :as modeling]
             [kami.modeler.project :as project]
+            [kami.modeler.vehicle :as modeler-vehicle]
             [kami.webgpu :as instanced-gpu]
             [kami.webgpu.ir :as render-ir]
             [kami.webgpu.mesh :as gpu-mesh]))
@@ -819,5 +820,12 @@
                                             (apply-project! m)))))))))
     (.addEventListener (.getElementById js/document "export") "click" download-project!)
     (.addEventListener (.getElementById js/document "export-gltf") "click" download-gltf!)
+    (when (= "vehicle-physics" (.get (js/URLSearchParams. (.-search js/location)) "workspace"))
+      (let [profile (.getElementById js/document "profile")
+            option (.createElement js/document "option")]
+        (set! (.-value option) "vehicle-physics")
+        (set! (.-textContent option) "Vehicle Physics")
+        (.appendChild profile option))
+      (apply-project! (modeler-vehicle/open-document (modeler-vehicle/sample-document))))
     (update-ui!)
     (init-gpu! canvas)))
