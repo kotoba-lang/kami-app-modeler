@@ -61,8 +61,11 @@
                           #js {:name "pixel.png" :mimeType "image/png" :buffer png})
         _ (.waitForFunction page "() => JSON.parse(document.querySelector('#debug-state').textContent).textureLoaded === true" nil #js {:timeout 30000})
         texture-state (state! page)
-        _ (browser/assert! (and (.-textureLoaded texture-state)
-                                (= (.-uvCount texture-state) (.-vertices knife)))
+        _ (browser/assert! (and (= 1 (.-textureCacheCount texture-state))
+                                (.-textureDevice texture-state)
+                                (= (.-uvCount texture-state) (.-vertices knife))
+                                (.startsWith (aget (.-material texture-state) "base-color-texture")
+                                             "data:image/png;base64,"))
                            (str "Texture upload failed: " (js/JSON.stringify texture-state)))
 
         export-topology (topology! page)
