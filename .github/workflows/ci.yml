@@ -26,6 +26,9 @@ jobs:
       - uses: ./kami-app-modeler/.github/actions/checkout-workspace
       - uses: actions/setup-node@v4
         with: {node-version: 22, cache: npm, cache-dependency-path: kami-app-modeler/package-lock.json}
+      - uses: DeLaGuardo/setup-clojure@13.2
+        with:
+          cli: latest
       - run: npm ci
       - run: npm run build
       - uses: actions/upload-artifact@v4
