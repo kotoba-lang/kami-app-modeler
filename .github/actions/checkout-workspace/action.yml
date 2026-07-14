@@ -1,0 +1,57 @@
+name: Checkout Kotoba workspace dependencies
+description: Checkout local/root dependencies beside kami-app-modeler.
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@v4
+      with: {repository: kotoba-lang/html, path: html}
+    - uses: actions/checkout@v4
+      with: {repository: kotoba-lang/css, path: css}
+    - uses: actions/checkout@v4
+      with: {repository: kotoba-lang/kami-engine-modeling, path: kami-engine-modeling}
+    - uses: actions/checkout@v4
+      with: {repository: kotoba-lang/kami-engine-sdk, path: kami-engine-sdk}
+    - uses: actions/checkout@v4
+      with: {repository: kotoba-lang/webgpu, path: webgpu}
+    - uses: actions/checkout@v4
+      with: {repository: kotoba-lang/org-w3-webgpu, path: org-w3-webgpu}
+    - uses: actions/checkout@v4
+      with: {repository: kotoba-lang/expr, path: expr}
+    - uses: actions/checkout@v4
+      with: {repository: kotoba-lang/wgsl, path: wgsl}
+    - uses: actions/checkout@v4
+      with: {repository: kotoba-lang/sprite-gpu, path: sprite-gpu}
+    - uses: actions/checkout@v4
+      with: {repository: kotoba-lang/sprite2d, path: sprite2d}
+    - uses: actions/checkout@v4
+      with: {repository: kotoba-lang/sky, path: sky}
+    - uses: actions/checkout@v4
+      with: {repository: kotoba-lang/shaders, path: shaders}
+    - uses: actions/checkout@v4
+      with: {repository: kotoba-lang/render-shaders, path: render-shaders}
+    - uses: actions/checkout@v4
+      with: {repository: kotoba-lang/scene2d, path: scene2d}
+    - uses: actions/checkout@v4
+      with: {repository: kotoba-lang/gpu, path: gpu}
+    - uses: actions/checkout@v4
+      with: {repository: kotoba-lang/webgl, path: webgl}
+    - uses: actions/checkout@v4
+      with: {repository: kotoba-lang/dance, path: dance}
+    - uses: actions/checkout@v4
+      with: {repository: kotoba-lang/physics, path: physics}
+    - uses: actions/checkout@v4
+      with: {repository: kotoba-lang/physics-2d, path: physics-2d}
+    - uses: actions/checkout@v4
+      with: {repository: kotoba-lang/fsm, path: fsm}
+    - uses: actions/checkout@v4
+      with: {repository: kotoba-lang/netsync, path: netsync}
+    - uses: actions/checkout@v4
+      with: {repository: kotoba-lang/pipelines, path: pipelines}
+    - uses: actions/checkout@v4
+      with: {repository: kotoba-lang/level, path: level}
+    - uses: actions/checkout@v4
+      with: {repository: kotoba-lang/host, path: host}
+    - uses: actions/checkout@v4
+      with: {repository: kotoba-lang/playwright, path: playwright}
+    - uses: actions/checkout@v4
+      with: {repository: kotoba-lang/cartpole-math, path: cartpole-math}

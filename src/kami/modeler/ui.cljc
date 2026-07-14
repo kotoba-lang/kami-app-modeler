@@ -30,14 +30,14 @@
              ".modifier-row" {:display :grid :grid-template-columns "1fr 30px 30px 30px" :gap 4 :align-items :center :font-size 11}
              ".outliner-row" {:display :grid :grid-template-columns "1fr 38px 38px" :gap 4}
              ".outliner-row button" {:padding 6}
-             ".modifier-row button" {:padding 5 :text-align :center}
-             "@media (max-width: 900px)" {"body" {:height :auto :min-height "100vh"}
-                                          "header" {:flex-wrap :wrap :height :auto :padding "10px 12px" :gap 8}
-                                          "header button" {:margin-left 0}
-                                          "main" {:grid-template-columns "1fr" :grid-template-rows "minmax(55vh,1fr) auto auto"}
-                                          ".viewport" {:grid-row 1 :min-height "55vh"}
-                                          "aside" {:border "1px solid #293456"}}
-             "@media (prefers-reduced-motion: reduce)" {"*" {:scroll-behavior :auto :transition :none :animation :none}}}})
+             ".modifier-row button" {:padding 5 :text-align :center}}
+            :media {"(max-width: 900px)" {"body" {:height :auto :min-height "100vh"}
+                                           "header" {:flex-wrap :wrap :height :auto :padding "10px 12px" :gap 8}
+                                           "header button" {:margin-left 0}
+                                           "main" {:grid-template-columns "1fr" :grid-template-rows "minmax(55vh,1fr) auto auto"}
+                                           ".viewport" {:grid-row 1 :min-height "55vh"}
+                                           "aside" {:border "1px solid #293456"}}
+                    "(prefers-reduced-motion: reduce)" {"*" {:scroll-behavior :auto :transition :none :animation :none}}}})
 
 (defn page []
   (html/html5
