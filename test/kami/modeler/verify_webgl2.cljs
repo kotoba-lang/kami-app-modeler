@@ -25,4 +25,5 @@
   (p/let [_ (.screenshot page #js {:path "test/modeler-webgl2.png"})
           _ (.close instance)
           _ (browser/close-server! server)]
-    (println (js/JSON.stringify #js {:webgl2 true :largeScene result}))))
+    (println (js/JSON.stringify #js {:webgl2 true :largeScene result}))
+    (.exit js/process 0)))
