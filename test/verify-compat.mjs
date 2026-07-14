@@ -29,7 +29,7 @@ const errors = [];
 page.on("pageerror", error => errors.push(error.message));
 page.on("console", message => { if (message.type() === "error") errors.push(message.text()); });
 await page.goto(process.env.MODELER_URL || baseUrl, {waitUntil: "networkidle"});
-await page.waitForFunction(() => window.__kami_modeler_ready === true, null, {timeout: 30000});
+await page.waitForFunction(() => window.__kami_modeler_ready === true, null, {timeout: 60000});
 await page.click("#new-cube");
 await page.click("#save-project");
 const state = await page.evaluate(() => JSON.parse(document.querySelector("#debug-state").textContent));

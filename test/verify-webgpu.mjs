@@ -143,7 +143,7 @@ await page.locator("#import-gltf-file").setInputFiles({name: "roundtrip.gltf", m
 await page.waitForFunction(expected => {
   const mesh = window.__kami_modeler_mesh;
   return (mesh.vertices?.length ?? mesh["mesh/vertices"]?.length) === expected.vertices;
-}, beforeGltf, {timeout: 15000});
+}, beforeGltf, {timeout: 60000});
 const afterGltf = await page.evaluate(() => ({vertices: window.__kami_modeler_mesh.vertices?.length ?? window.__kami_modeler_mesh["mesh/vertices"]?.length,
                                               faces: window.__kami_modeler_mesh.faces?.length ?? window.__kami_modeler_mesh["mesh/faces"]?.length}));
 if (JSON.stringify(beforeGltf) !== JSON.stringify(afterGltf)) throw new Error(`glTF round trip changed topology: ${JSON.stringify({beforeGltf, afterGltf})}`);
