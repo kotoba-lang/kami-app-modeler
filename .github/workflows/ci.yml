@@ -9,27 +9,39 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: {path: kami-app-modeler}
-      - uses: actions/checkout@v4
-        with: {repository: kotoba-lang/html, path: html}
-      - uses: actions/checkout@v4
-        with: {repository: kotoba-lang/css, path: css}
-      - uses: actions/checkout@v4
-        with: {repository: kotoba-lang/kami-engine-modeling, path: kami-engine-modeling}
-      - uses: actions/checkout@v4
-        with: {repository: kotoba-lang/webgpu, path: webgpu}
-      - uses: actions/checkout@v4
-        with: {repository: kotoba-lang/org-w3-webgpu, path: org-w3-webgpu}
-      - uses: actions/checkout@v4
-        with: {repository: kotoba-lang/expr, path: expr}
+      - uses: ./kami-app-modeler/.github/actions/checkout-workspace
       - uses: DeLaGuardo/setup-clojure@13.2
         with:
           cli: latest
       - run: clojure -M:lint
       - run: clojure -M:test
+  build-browser-bundle:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: kami-app-modeler
+    steps:
+      - uses: actions/checkout@v4
+        with: {path: kami-app-modeler}
+      - uses: ./kami-app-modeler/.github/actions/checkout-workspace
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm, cache-dependency-path: kami-app-modeler/package-lock.json}
+      - uses: DeLaGuardo/setup-clojure@13.2
+        with:
+          cli: latest
+      - run: npm ci
+      - run: npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: modeler-browser-bundle
+          path: kami-app-modeler/public/js/app.js
   webgl2-e2e:
+    needs: build-browser-bundle
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: {name: modeler-browser-bundle, path: public/js}
       - uses: actions/setup-node@v4
         with: {node-version: 22, cache: npm}
       - run: npm ci
@@ -42,12 +54,15 @@ jobs:
           path: test/modeler-webgl2.png
           if-no-files-found: ignore
   browser-compatibility:
+    needs: build-browser-bundle
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix: {browser: [chromium, firefox, webkit]}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: {name: modeler-browser-bundle, path: public/js}
       - uses: actions/setup-node@v4
         with: {node-version: 22, cache: npm}
       - run: npm ci
@@ -56,9 +71,12 @@ jobs:
         env:
           BROWSER: ${{ matrix.browser }}
   webgpu-e2e:
+    needs: build-browser-bundle
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: {name: modeler-browser-bundle, path: public/js}
       - uses: actions/setup-node@v4
         with: {node-version: 22, cache: npm}
       - run: npm ci
