@@ -1,10 +1,16 @@
 {:paths ["src" "test"]
- :deps {io.github.kotoba-lang/html {:local/root "../html"}
-        io.github.kotoba-lang/css  {:local/root "../css"}
-        io.github.kotoba-lang/modeling {:local/root "../kami-engine-modeling"}
-        io.github.kotoba-lang/webgpu {:local/root "../webgpu"}
-        io.github.kotoba-lang/org-w3-webgpu {:local/root "../org-w3-webgpu"}
-        io.github.kotoba-lang/expr {:local/root "../expr"}
+ :deps {io.github.kotoba-lang/html {:git/url "https://github.com/kotoba-lang/html.git"
+                                     :git/sha "aa57f2730c87b7c2752151ed1a5f2e402c2ac71e"}
+        io.github.kotoba-lang/css  {:git/url "https://github.com/kotoba-lang/css.git"
+                                     :git/sha "7fc8167c4fb97a92b7c21545e6a92a86cc58a9ca"}
+        io.github.kotoba-lang/modeling {:git/url "https://github.com/kotoba-lang/kami-engine-modeling.git"
+                                     :git/sha "d68cd4f6461dadd6ab6194a83606af32ae3d9966"}
+        io.github.kotoba-lang/webgpu {:git/url "https://github.com/kotoba-lang/webgpu.git"
+                                     :git/sha "88597ebb6d33f435e62f9e2c3847189e2482a6be"}
+        io.github.kotoba-lang/org-w3-webgpu {:git/url "https://github.com/kotoba-lang/org-w3-webgpu.git"
+                                     :git/sha "05b7b9914e28cf53ab7ba73e2e0040f6de68e616"}
+        io.github.kotoba-lang/expr {:git/url "https://github.com/kotoba-lang/expr.git"
+                                     :git/sha "3bf48bff59aa1fb1ea48a0b84103d63fd2b507ff"}
         io.github.kotoba-lang/physics
         {:git/url "https://github.com/kotoba-lang/physics.git"
          :git/sha "3081560a4327319d9916a3c1c53471223462c0c3"}}
