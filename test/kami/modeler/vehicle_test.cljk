@@ -1,5 +1,5 @@
 (ns kami.modeler.vehicle-test
-  (:require [clojure.test :refer [deftest is]] [kami.modeler.project :as project]
+  (:require [kotoba.test :refer [deftest is]] [kami.modeler.project :as project]
             [kami.modeler.vehicle :as importer] [kotoba.physics.vehicle :as vehicle]))
 (deftest shared-vehicle-opens-as-modeler-project
   (let [doc (vehicle/document {:id :tiny :structure {:nodes [{:id 1 :position {:x 0 :y 1 :z 2}}]
