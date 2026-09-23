@@ -1,5 +1,5 @@
 (ns kami.modeler.project-test
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [kami.modeler.project :as project]
             [kami.modeling :as modeling]))
 

@@ -1,5 +1,5 @@
 (ns kami.modeler.ui-test
-  (:require [clojure.test :refer [deftest is]]
+  (:require [kotoba.test :refer [deftest is]]
             [kami.modeler.ui :as ui]))
 
 (deftest modeler-shell-is-generated-by-kotoba-ui-substrates
